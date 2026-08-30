@@ -1,7 +1,7 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon } from 'lucide-react';
 
-export default function ReconciliationTable({ invoiceItems, poItems, onUpdateItem, activeHoverItem, setActiveHoverItem }) {
+export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, activeHoverItem, setActiveHoverItem }) {
   
   const getStatusBadge = (status) => {
     switch (status) {
@@ -10,6 +10,13 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold badge-matched">
             <CheckCircle2 className="w-3.5 h-3.5" />
             MATCHED
+          </span>
+        );
+      case 'GRN_MISMATCH':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-950/80 text-purple-300 border border-purple-500/40">
+            <AlertOctagon className="w-3.5 h-3.5 text-purple-400" />
+            GRN SHORT-SHIPMENT
           </span>
         );
       case 'PRICE_MISMATCH':
@@ -41,12 +48,12 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
     <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur">
       <div className="px-4 py-3 bg-slate-950/70 border-b border-slate-800 flex items-center justify-between">
         <h4 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-          <span>Itemized 2-Way Reconciliation Grid</span>
+          <span>Itemized {matchMode === '3way' ? '3-Way (Invoice + PO + GRN)' : '2-Way (Invoice + PO)'} Grid</span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-normal">
             {invoiceItems.length} Items Parsed
           </span>
         </h4>
-        <span className="text-xs text-slate-500 font-mono">Tolerance Threshold: 1.0%</span>
+        <span className="text-xs text-slate-500 font-mono">Tolerance: 1.0% Price / 0 Qty Variance</span>
       </div>
 
       <div className="overflow-x-auto">
@@ -54,9 +61,12 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
           <thead>
             <tr className="bg-slate-950/40 border-b border-slate-800 text-slate-400 uppercase font-mono">
               <th className="py-3 px-4 font-medium">Extracted Description</th>
-              <th className="py-3 px-3 font-medium text-center">Ext. Qty</th>
+              <th className="py-3 px-3 font-medium text-center">Billed Qty</th>
               <th className="py-3 px-3 font-medium text-center">PO Qty</th>
-              <th className="py-3 px-3 font-medium text-right">Ext. Price</th>
+              {matchMode === '3way' && (
+                <th className="py-3 px-3 font-medium text-center text-purple-300">GRN Rec. Qty</th>
+              )}
+              <th className="py-3 px-3 font-medium text-right">Billed Price</th>
               <th className="py-3 px-3 font-medium text-right">PO Price</th>
               <th className="py-3 px-4 font-medium text-center">Reconciliation Status</th>
               <th className="py-3 px-3 font-medium text-center">Actions</th>
@@ -66,12 +76,7 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
             {invoiceItems.map((item, index) => {
               const fieldKey = `line_item_${index + 1}`;
               const isHovered = activeHoverItem === fieldKey || activeHoverItem === index;
-              
-              // Find matching PO item for direct comparison display
               const matchedPo = poItems.find(p => p.item_description?.toLowerCase().includes(item.description?.toLowerCase().substring(0, 8)));
-
-              const qtyDiff = item.quantity - (matchedPo?.quantity || 0);
-              const priceDiff = item.unit_price - (matchedPo?.unit_price || 0);
 
               return (
                 <tr 
@@ -89,29 +94,38 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
                     {matchedPo && (
                       <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <ArrowRight className="w-3 h-3 text-indigo-400" />
-                        <span>Matched PO: {matchedPo.item_description}</span>
+                        <span>PO Item: {matchedPo.item_description}</span>
                       </div>
                     )}
                   </td>
 
-                  {/* Quantity */}
+                  {/* Quantity Billed */}
                   <td className="py-3 px-3 text-center">
                     <input
                       type="number"
                       value={item.quantity}
                       onChange={(e) => onUpdateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                       className={`w-16 px-1.5 py-1 rounded bg-slate-950 border text-center font-mono text-xs focus:outline-none focus:ring-1 ${
-                        item.reconciliation_status === 'QTY_EXCEEDED'
-                          ? 'border-amber-500 text-amber-300 font-bold bg-amber-950/20'
+                        item.reconciliation_status === 'QTY_EXCEEDED' || item.reconciliation_status === 'GRN_MISMATCH'
+                          ? 'border-purple-500 text-purple-300 font-bold bg-purple-950/30'
                           : 'border-slate-700 text-slate-200 focus:ring-indigo-500'
                       }`}
                     />
                   </td>
+
+                  {/* PO Quantity */}
                   <td className="py-3 px-3 text-center font-mono text-slate-400">
                     {matchedPo ? matchedPo.quantity.toFixed(2) : '-'}
                   </td>
 
-                  {/* Unit Price */}
+                  {/* 3-Way GRN Physical Received Quantity */}
+                  {matchMode === '3way' && (
+                    <td className="py-3 px-3 text-center font-mono font-bold text-purple-300 bg-purple-950/10">
+                      {item.grn_received_qty !== undefined ? item.grn_received_qty.toFixed(2) : (matchedPo ? matchedPo.quantity.toFixed(2) : '-')}
+                    </td>
+                  )}
+
+                  {/* Unit Price Billed */}
                   <td className="py-3 px-3 text-right">
                     <div className="inline-flex items-center gap-1">
                       <span className="text-slate-500">$</span>
@@ -128,6 +142,8 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
                       />
                     </div>
                   </td>
+
+                  {/* PO Unit Price */}
                   <td className="py-3 px-3 text-right font-mono text-slate-400">
                     {matchedPo ? `$${matchedPo.unit_price.toFixed(2)}` : '-'}
                   </td>
@@ -137,16 +153,17 @@ export default function ReconciliationTable({ invoiceItems, poItems, onUpdateIte
                     {getStatusBadge(item.reconciliation_status)}
                   </td>
 
-                  {/* Quick Fix Button */}
+                  {/* Quick Action */}
                   <td className="py-3 px-3 text-center">
                     <button
                       onClick={() => {
                         if (matchedPo) {
-                          onUpdateItem(index, 'quantity', matchedPo.quantity);
+                          const targetQty = matchMode === '3way' && item.grn_received_qty !== undefined ? item.grn_received_qty : matchedPo.quantity;
+                          onUpdateItem(index, 'quantity', targetQty);
                           onUpdateItem(index, 'unit_price', matchedPo.unit_price);
                         }
                       }}
-                      title="Force align values to PO target"
+                      title="Force align billed values to physical receipt/PO"
                       className="p-1 rounded bg-slate-800 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700 transition"
                     >
                       <Edit3 className="w-3.5 h-3.5" />

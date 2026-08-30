@@ -13,7 +13,9 @@ import {
   FileText, 
   Sparkles,
   Search,
-  Upload
+  Upload,
+  PackageCheck,
+  Layers
 } from 'lucide-react';
 
 export default function SplitViewWorkspace({ 
@@ -30,6 +32,7 @@ export default function SplitViewWorkspace({
   const [isReconciling, setIsReconciling] = useState(false);
   const [erpSyncing, setErpSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [matchMode, setMatchMode] = useState('3way'); // '2way' | '3way'
 
   const currentPo = purchaseOrders.find(p => p.id === selectedPoId || p.po_number === selectedPoId) || purchaseOrders[0];
 
@@ -52,9 +55,9 @@ export default function SplitViewWorkspace({
 
   const handleReconcileClick = async () => {
     setIsReconciling(true);
-    await onRunReconcile(selectedPoId);
+    await onRunReconcile(selectedPoId, matchMode);
     setIsReconciling(false);
-    showNotification('2-Way Reconciliation complete against ' + (currentPo?.po_number || 'PO'));
+    showNotification(`${matchMode === '3way' ? '3-Way GRN' : '2-Way PO'} Reconciliation complete against ${currentPo?.po_number || 'PO'}!`);
   };
 
   const handleErpSyncClick = async () => {
@@ -65,13 +68,15 @@ export default function SplitViewWorkspace({
   };
 
   const handleExportCsv = () => {
-    const headers = ["InvoiceNumber", "Vendor", "PO", "Description", "Quantity", "UnitPrice", "TotalPrice", "Status"];
+    const headers = ["InvoiceNumber", "Vendor", "PO", "Description", "BilledQty", "POQty", "GRNQty", "UnitPrice", "TotalPrice", "Status"];
     const rows = (invoiceData.items || []).map(it => [
       invoiceData.invoice_number,
       invoiceData.vendor_name,
       currentPo?.po_number,
       `"${it.description}"`,
       it.quantity,
+      currentPo?.items[0]?.quantity || 0,
+      it.grn_received_qty !== undefined ? it.grn_received_qty : (currentPo?.items[0]?.quantity || 0),
       it.unit_price,
       it.total_price,
       it.reconciliation_status
@@ -81,7 +86,7 @@ export default function SplitViewWorkspace({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Reconciliation_${invoiceData.invoice_number}.csv`);
+    link.setAttribute("download", `Reconciliation_${invoiceData.invoice_number}_${matchMode}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -118,10 +123,10 @@ export default function SplitViewWorkspace({
           />
         </div>
 
-        {/* Right Column: 2-Way Match & Extraction Control Workspace */}
+        {/* Right Column: 3-Way Match & Extraction Control Workspace */}
         <div className="lg:col-span-6 flex flex-col gap-4">
           
-          {/* Target PO Selector & Vendor Card */}
+          {/* Target PO Selector & 2-Way / 3-Way Toggle */}
           <div className="glass-panel p-5">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
               <div className="flex items-center gap-3">
@@ -139,27 +144,69 @@ export default function SplitViewWorkspace({
                 </div>
               </div>
 
-              {/* Target PO Selector */}
-              <div className="flex flex-col items-end">
-                <label className="text-[11px] font-mono uppercase text-slate-400 mb-1">Target Purchase Order</label>
+              {/* Match Mode Switcher */}
+              <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button
+                  onClick={() => {
+                    setMatchMode('2way');
+                    onRunReconcile(selectedPoId, '2way');
+                  }}
+                  className={`px-3 py-1 rounded text-xs font-semibold transition ${
+                    matchMode === '2way' 
+                      ? 'bg-indigo-600 text-white shadow' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  2-Way (PO Only)
+                </button>
+
+                <button
+                  onClick={() => {
+                    setMatchMode('3way');
+                    onRunReconcile(selectedPoId, '3way');
+                  }}
+                  className={`flex items-center gap-1 px-3 py-1 rounded text-xs font-semibold transition ${
+                    matchMode === '3way' 
+                      ? 'bg-purple-600 text-white shadow' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <PackageCheck className="w-3.5 h-3.5 text-purple-300" />
+                  3-Way (PO + GRN)
+                </button>
+              </div>
+            </div>
+
+            {/* Target PO & GRN Selector Controls */}
+            <div className="grid grid-cols-2 gap-4 pb-4 mb-4 border-b border-slate-800">
+              <div>
+                <label className="text-[11px] font-mono uppercase text-slate-400 mb-1 block">Target Purchase Order</label>
                 <select
                   value={selectedPoId}
                   onChange={(e) => setSelectedPoId(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 text-indigo-300 font-mono text-xs font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-700 text-indigo-300 font-mono text-xs font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {purchaseOrders.map(po => (
                     <option key={po.id} value={po.id}>
-                      {po.po_number} - ${po.total_amount.toLocaleString()} ({po.vendor_name})
+                      {po.po_number} - ${po.total_amount.toLocaleString()}
                     </option>
                   ))}
                 </select>
               </div>
+
+              <div>
+                <label className="text-[11px] font-mono uppercase text-slate-400 mb-1 block">Warehouse Receipt (GRN)</label>
+                <div className="bg-slate-950 border border-slate-700 text-purple-300 font-mono text-xs font-bold rounded-lg px-3 py-1.5 flex items-center justify-between">
+                  <span>GRN-{currentPo?.po_number?.replace('PO-', '')}-A</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">Verified Receipt</span>
+                </div>
+              </div>
             </div>
 
-            {/* Reconciliation Overall Status & Metric Strip */}
+            {/* Metrics Strip */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                <p className="text-[11px] text-slate-400 font-mono">Invoice Amount</p>
+                <p className="text-[11px] text-slate-400 font-mono">Invoice Billed Total</p>
                 <p className="text-lg font-bold font-mono text-slate-100">${invTotalAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
@@ -205,10 +252,14 @@ export default function SplitViewWorkspace({
               <button
                 onClick={handleReconcileClick}
                 disabled={isReconciling}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+                className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-lg transition disabled:opacity-50 ${
+                  matchMode === '3way' 
+                    ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/30' 
+                    : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
+                }`}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isReconciling ? 'animate-spin' : ''}`} />
-                Run 2-Way Match
+                Run {matchMode === '3way' ? '3-Way Match' : '2-Way Match'}
               </button>
 
               <button
@@ -222,10 +273,11 @@ export default function SplitViewWorkspace({
             </div>
           </div>
 
-          {/* Itemized 2-Way Match Table */}
+          {/* Itemized Reconciliation Table */}
           <ReconciliationTable
             invoiceItems={invoiceData.items || []}
             poItems={currentPo?.items || []}
+            matchMode={matchMode}
             onUpdateItem={handleUpdateLineItem}
             activeHoverItem={activeHoverItem}
             setActiveHoverItem={setActiveHoverItem}

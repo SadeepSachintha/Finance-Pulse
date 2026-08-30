@@ -7,8 +7,7 @@ class ReconciliationEngine
     protected float $priceTolerancePercent = 1.0; // Allowed 1% variance
 
     /**
-     * Run 2-way match between an Invoice and a target Purchase Order array/object data.
-     * Works seamlessly in Laravel Eloquent models or array structures.
+     * Run 2-Way Match between Invoice and Purchase Order.
      */
     public function reconcile($invoice, $po): array
     {
@@ -38,7 +37,7 @@ class ReconciliationEngine
             $poQty = (float)($matchedPoItem['quantity'] ?? 0);
             $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
 
-            // 1. Validate Quantity
+            // 1. Validate Quantity vs PO
             if ($invQty > $poQty) {
                 $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
                 $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
@@ -62,15 +61,101 @@ class ReconciliationEngine
             $updatedItems[] = $invItem;
         }
 
-        // Determine final invoice status
         $finalStatus = (count($invoiceItems) > 0 && $allMatched) ? 'MATCHED' : 'DISCREPANCY';
 
         return [
+            'mode' => '2-Way',
             'status' => $finalStatus,
             'discrepancies' => $discrepancies,
             'items' => $updatedItems,
             'matched_po_id' => $po['id'] ?? null,
             'po_number' => $po['po_number'] ?? null
+        ];
+    }
+
+    /**
+     * Run 3-Way Match between Invoice, Purchase Order, and Goods Received Note (GRN).
+     */
+    public function reconcile3Way($invoice, $po, $grn): array
+    {
+        $discrepancies = [];
+        $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
+        $poItems = is_array($po['items']) ? $po['items'] : [];
+        $grnItems = is_array($grn['items']) ? $grn['items'] : [];
+
+        $allMatched = true;
+        $updatedItems = [];
+
+        foreach ($invoiceItems as $invItem) {
+            $itemDesc = $invItem['description'] ?? '';
+            $invQty = (float)($invItem['quantity'] ?? 0);
+            $invPrice = (float)($invItem['unit_price'] ?? 0);
+
+            // 1. Match PO Item
+            $matchedPoItem = $this->findBestMatchingPoItem($itemDesc, $poItems);
+            if (!$matchedPoItem) {
+                $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
+                $discrepancies[] = "Item '{$itemDesc}' not found on PO {$po['po_number']}.";
+                $allMatched = false;
+                $updatedItems[] = $invItem;
+                continue;
+            }
+
+            $poQty = (float)($matchedPoItem['quantity'] ?? 0);
+            $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
+
+            // 2. Match GRN Item
+            $matchedGrnItem = $this->findBestMatchingGrnItem($matchedPoItem['id'] ?? '', $itemDesc, $grnItems);
+            $grnAcceptedQty = $matchedGrnItem ? (float)($matchedGrnItem['accepted_quantity'] ?? $matchedGrnItem['received_quantity'] ?? 0) : 0;
+
+            // Check A: Physical Received Quantity vs Invoice Billed Quantity
+            if ($invQty > $grnAcceptedQty) {
+                $invItem['reconciliation_status'] = 'GRN_MISMATCH';
+                $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $discrepancies[] = "3-WAY ALERT: Item '{$itemDesc}' billed quantity ({$invQty}) exceeds physical warehouse receipt ({$grnAcceptedQty} on {$grn['grn_number']}). Short-shipment detected!";
+                $allMatched = false;
+                $updatedItems[] = $invItem;
+                continue;
+            }
+
+            // Check B: Quantity vs PO
+            if ($invQty > $poQty) {
+                $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
+                $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
+                $allMatched = false;
+                $updatedItems[] = $invItem;
+                continue;
+            }
+
+            // Check C: Unit Price Variance vs PO
+            $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
+            if ($priceDiffPercent > $this->priceTolerancePercent) {
+                $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
+                $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPrice} vs \${$poPrice}, " . round($priceDiffPercent, 1) . "% diff).";
+                $allMatched = false;
+                $updatedItems[] = $invItem;
+                continue;
+            }
+
+            // All 3 Checks Passed
+            $invItem['reconciliation_status'] = 'MATCHED';
+            $invItem['grn_received_qty'] = $grnAcceptedQty;
+            $updatedItems[] = $invItem;
+        }
+
+        $finalStatus = (count($invoiceItems) > 0 && $allMatched) ? 'MATCHED' : 'DISCREPANCY';
+
+        return [
+            'mode' => '3-Way',
+            'status' => $finalStatus,
+            'discrepancies' => $discrepancies,
+            'items' => $updatedItems,
+            'matched_po_id' => $po['id'] ?? null,
+            'po_number' => $po['po_number'] ?? null,
+            'matched_grn_id' => $grn['id'] ?? null,
+            'grn_number' => $grn['grn_number'] ?? null
         ];
     }
 
@@ -89,5 +174,24 @@ class ReconciliationEngine
         }
 
         return $bestMatch;
+    }
+
+    public function findBestMatchingGrnItem(string $poItemId, string $description, array $grnItems)
+    {
+        foreach ($grnItems as $gItem) {
+            if (isset($gItem['po_item_id']) && $gItem['po_item_id'] === $poItemId) {
+                return $gItem;
+            }
+        }
+
+        foreach ($grnItems as $gItem) {
+            $gDesc = $gItem['item_description'] ?? $gItem['notes'] ?? '';
+            similar_text(strtolower($description), strtolower($gDesc), $percent);
+            if ($percent >= 50.0) {
+                return $gItem;
+            }
+        }
+
+        return null;
     }
 }
