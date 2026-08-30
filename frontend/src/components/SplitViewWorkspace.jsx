@@ -31,6 +31,7 @@ export default function SplitViewWorkspace({
   onUploadNewInvoice
 }) {
   const [activeHoverItem, setActiveHoverItem] = useState(null);
+  const [selectedFocusItem, setSelectedFocusItem] = useState('line_item_1');
   const [isReconciling, setIsReconciling] = useState(false);
   const [erpSyncing, setErpSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -161,6 +162,7 @@ export default function SplitViewWorkspace({
             invoiceData={invoiceData}
             activeHoverItem={activeHoverItem}
             setActiveHoverItem={setActiveHoverItem}
+            selectedFocusItem={selectedFocusItem}
           />
         </div>
 
@@ -310,6 +312,8 @@ export default function SplitViewWorkspace({
             onUpdateItem={handleUpdateLineItem}
             activeHoverItem={activeHoverItem}
             setActiveHoverItem={setActiveHoverItem}
+            selectedFocusItem={selectedFocusItem}
+            setSelectedFocusItem={setSelectedFocusItem}
           />
         </div>
       </div>

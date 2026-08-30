@@ -1,7 +1,7 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target } from 'lucide-react';
 
-export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, activeHoverItem, setActiveHoverItem }) {
+export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
   
   const getStatusBadge = (status) => {
     switch (status) {
@@ -53,7 +53,10 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
             {invoiceItems.length} Items Parsed
           </span>
         </h4>
-        <span className="text-xs text-slate-500 font-mono">Tolerance: 1.0% Price / 0 Qty Variance</span>
+        <span className="text-xs text-sky-400 font-mono flex items-center gap-1">
+          <Target className="w-3.5 h-3.5" />
+          Click row to auto-zoom document box
+        </span>
       </div>
 
       <div className="overflow-x-auto">
@@ -76,21 +79,26 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
             {invoiceItems.map((item, index) => {
               const fieldKey = `line_item_${index + 1}`;
               const isHovered = activeHoverItem === fieldKey || activeHoverItem === index;
+              const isFocused = selectedFocusItem === fieldKey;
               const matchedPo = poItems.find(p => p.item_description?.toLowerCase().includes(item.description?.toLowerCase().substring(0, 8)));
 
               return (
                 <tr 
                   key={index}
+                  onClick={() => setSelectedFocusItem(fieldKey)}
                   onMouseEnter={() => setActiveHoverItem(fieldKey)}
                   onMouseLeave={() => setActiveHoverItem(null)}
-                  className={`transition-colors ${
-                    isHovered 
-                      ? 'bg-indigo-950/40 border-l-4 border-indigo-500' 
-                      : 'hover:bg-slate-800/40'
+                  className={`transition-colors cursor-pointer ${
+                    isFocused
+                      ? 'bg-sky-950/50 border-l-4 border-sky-400 font-medium'
+                      : (isHovered ? 'bg-indigo-950/40 border-l-4 border-indigo-500' : 'hover:bg-slate-800/40')
                   }`}
                 >
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-200">{item.description}</div>
+                    <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                      <span>{item.description}</span>
+                      {isFocused && <Target className="w-3.5 h-3.5 text-sky-400 animate-pulse" />}
+                    </div>
                     {matchedPo && (
                       <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <ArrowRight className="w-3 h-3 text-indigo-400" />
@@ -153,21 +161,34 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
                     {getStatusBadge(item.reconciliation_status)}
                   </td>
 
-                  {/* Quick Action */}
+                  {/* Focus & Quick Action */}
                   <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => {
-                        if (matchedPo) {
-                          const targetQty = matchMode === '3way' && item.grn_received_qty !== undefined ? item.grn_received_qty : matchedPo.quantity;
-                          onUpdateItem(index, 'quantity', targetQty);
-                          onUpdateItem(index, 'unit_price', matchedPo.unit_price);
-                        }
-                      }}
-                      title="Force align billed values to physical receipt/PO"
-                      className="p-1 rounded bg-slate-800 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700 transition"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFocusItem(fieldKey);
+                        }}
+                        title="Zoom canvas to target bounding box"
+                        className="p-1 rounded bg-slate-800 hover:bg-sky-600/30 text-slate-300 hover:text-sky-300 border border-slate-700 transition"
+                      >
+                        <Target className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (matchedPo) {
+                            const targetQty = matchMode === '3way' && item.grn_received_qty !== undefined ? item.grn_received_qty : matchedPo.quantity;
+                            onUpdateItem(index, 'quantity', targetQty);
+                            onUpdateItem(index, 'unit_price', matchedPo.unit_price);
+                          }
+                        }}
+                        title="Force align billed values to physical receipt/PO"
+                        className="p-1 rounded bg-slate-800 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700 transition"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

@@ -19,13 +19,12 @@ class ReconciliationEngine
     /**
      * Run 2-Way Match between Invoice and Purchase Order.
      */
-    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = []): array
+    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = []): array
     {
         $discrepancies = [];
         $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
 
-        // Run Fraud Risk Assessment
         $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
         if ($fraudAssessment['is_fraud_flagged']) {
             foreach ($fraudAssessment['fraud_flags'] as $flag) {
@@ -41,7 +40,10 @@ class ReconciliationEngine
             $invQty = (float)($invItem['quantity'] ?? 0);
             $invPrice = (float)($invItem['unit_price'] ?? 0);
 
-            $matchedPoItem = $this->findBestMatchingPoItem($itemDesc, $poItems);
+            $matchResult = $this->findBestMatchingPoItem($itemDesc, $poItems, $vendorAliases);
+            $matchedPoItem = $matchResult['po_item'] ?? null;
+            $isLearnedAlias = $matchResult['is_learned_alias'] ?? false;
+
             if (!$matchedPoItem) {
                 $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
                 $discrepancies[] = "Item '{$itemDesc}' not found on PO {$po['po_number']}.";
@@ -55,6 +57,7 @@ class ReconciliationEngine
 
             if ($invQty > $poQty) {
                 $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
+                $invItem['is_learned_alias'] = $isLearnedAlias;
                 $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
@@ -64,13 +67,15 @@ class ReconciliationEngine
             $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
             if ($priceDiffPercent > $this->priceTolerancePercent) {
                 $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
+                $invItem['is_learned_alias'] = $isLearnedAlias;
                 $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPrice} vs \${$poPrice}, " . round($priceDiffPercent, 1) . "% diff).";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
                 continue;
             }
 
-            $invItem['reconciliation_status'] = 'MATCHED';
+            $invItem['reconciliation_status'] = $isLearnedAlias ? 'LEARNED_ALIAS_MATCH' : 'MATCHED';
+            $invItem['is_learned_alias'] = $isLearnedAlias;
             $updatedItems[] = $invItem;
         }
 
@@ -90,14 +95,13 @@ class ReconciliationEngine
     /**
      * Run 3-Way Match between Invoice, Purchase Order, and Goods Received Note (GRN).
      */
-    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = []): array
+    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = []): array
     {
         $discrepancies = [];
         $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
         $grnItems = is_array($grn['items']) ? $grn['items'] : [];
 
-        // Run Fraud Risk Assessment
         $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
         if ($fraudAssessment['is_fraud_flagged']) {
             foreach ($fraudAssessment['fraud_flags'] as $flag) {
@@ -113,7 +117,10 @@ class ReconciliationEngine
             $invQty = (float)($invItem['quantity'] ?? 0);
             $invPrice = (float)($invItem['unit_price'] ?? 0);
 
-            $matchedPoItem = $this->findBestMatchingPoItem($itemDesc, $poItems);
+            $matchResult = $this->findBestMatchingPoItem($itemDesc, $poItems, $vendorAliases);
+            $matchedPoItem = $matchResult['po_item'] ?? null;
+            $isLearnedAlias = $matchResult['is_learned_alias'] ?? false;
+
             if (!$matchedPoItem) {
                 $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
                 $discrepancies[] = "Item '{$itemDesc}' not found on PO {$po['po_number']}.";
@@ -131,6 +138,7 @@ class ReconciliationEngine
             if ($invQty > $grnAcceptedQty) {
                 $invItem['reconciliation_status'] = 'GRN_MISMATCH';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $invItem['is_learned_alias'] = $isLearnedAlias;
                 $discrepancies[] = "3-WAY ALERT: Item '{$itemDesc}' billed quantity ({$invQty}) exceeds physical warehouse receipt ({$grnAcceptedQty} on {$grn['grn_number']}). Short-shipment detected!";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
@@ -140,6 +148,7 @@ class ReconciliationEngine
             if ($invQty > $poQty) {
                 $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $invItem['is_learned_alias'] = $isLearnedAlias;
                 $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
@@ -150,14 +159,16 @@ class ReconciliationEngine
             if ($priceDiffPercent > $this->priceTolerancePercent) {
                 $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
+                $invItem['is_learned_alias'] = $isLearnedAlias;
                 $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPrice} vs \${$poPrice}, " . round($priceDiffPercent, 1) . "% diff).";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
                 continue;
             }
 
-            $invItem['reconciliation_status'] = 'MATCHED';
+            $invItem['reconciliation_status'] = $isLearnedAlias ? 'LEARNED_ALIAS_MATCH' : 'MATCHED';
             $invItem['grn_received_qty'] = $grnAcceptedQty;
+            $invItem['is_learned_alias'] = $isLearnedAlias;
             $updatedItems[] = $invItem;
         }
 
@@ -176,8 +187,24 @@ class ReconciliationEngine
         ];
     }
 
-    public function findBestMatchingPoItem(string $description, array $poItems)
+    public function findBestMatchingPoItem(string $description, array $poItems, array $vendorAliases = [])
     {
+        // 1. Check Vendor Self-Learning Alias Memory
+        foreach ($vendorAliases as $alias) {
+            $extractedAlias = $alias['extracted_description'] ?? '';
+            $mappedPoDesc = $alias['mapped_po_description'] ?? '';
+
+            if (strtolower(trim($description)) === strtolower(trim($extractedAlias)) || str_contains(strtolower($description), strtolower($extractedAlias))) {
+                foreach ($poItems as $pItem) {
+                    $poDesc = $pItem['item_description'] ?? $pItem['description'] ?? '';
+                    if (strtolower(trim($poDesc)) === strtolower(trim($mappedPoDesc)) || str_contains(strtolower($poDesc), strtolower($mappedPoDesc))) {
+                        return ['po_item' => $pItem, 'is_learned_alias' => true];
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback to Fuzzy String Matching
         $bestMatch = null;
         $highestSimilarity = 0;
 
@@ -190,7 +217,7 @@ class ReconciliationEngine
             }
         }
 
-        return $bestMatch;
+        return ['po_item' => $bestMatch, 'is_learned_alias' => false];
     }
 
     public function findBestMatchingGrnItem(string $poItemId, string $description, array $grnItems)

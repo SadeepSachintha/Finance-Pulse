@@ -21,19 +21,29 @@ CREATE TABLE IF NOT EXISTS vendor_approved_banks (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Purchase Orders Table
+-- 3. Vendor Self-Learning Item Aliases (Enhancement #4)
+CREATE TABLE IF NOT EXISTS vendor_item_aliases (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    extracted_description TEXT NOT NULL,
+    mapped_po_description TEXT NOT NULL,
+    times_used INT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Purchase Orders Table
 CREATE TABLE IF NOT EXISTS purchase_orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     po_number VARCHAR(64) NOT NULL UNIQUE,
     vendor_id UUID NOT NULL REFERENCES vendors(id),
-    status VARCHAR(32) NOT NULL DEFAULT 'OPEN', -- 'OPEN', 'PARTIALLY_MATCHED', 'CLOSED'
+    status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
     total_amount NUMERIC(12, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     issued_at DATE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. PO Line Items
+-- 5. PO Line Items
 CREATE TABLE IF NOT EXISTS po_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     po_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
@@ -43,7 +53,7 @@ CREATE TABLE IF NOT EXISTS po_items (
     total_price NUMERIC(12, 2) NOT NULL
 );
 
--- 5. Goods Received Notes (GRN - 3-Way Match Warehouse Receipts)
+-- 6. Goods Received Notes (GRN - 3-Way Match Warehouse Receipts)
 CREATE TABLE IF NOT EXISTS goods_received_notes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     grn_number VARCHAR(64) NOT NULL UNIQUE,
@@ -55,7 +65,7 @@ CREATE TABLE IF NOT EXISTS goods_received_notes (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. GRN Physical Line Items
+-- 7. GRN Physical Line Items
 CREATE TABLE IF NOT EXISTS grn_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     grn_id UUID NOT NULL REFERENCES goods_received_notes(id) ON DELETE CASCADE,
@@ -65,17 +75,17 @@ CREATE TABLE IF NOT EXISTS grn_items (
     notes TEXT
 );
 
--- 7. Extracted Invoices Table (With Fraud Engine Columns)
+-- 8. Extracted Invoices Table (With Fraud Engine Columns)
 CREATE TABLE IF NOT EXISTS invoices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     matched_po_id UUID REFERENCES purchase_orders(id),
     matched_grn_id UUID REFERENCES goods_received_notes(id),
     vendor_id UUID REFERENCES vendors(id),
     invoice_number VARCHAR(64),
-    invoice_hash VARCHAR(64) UNIQUE, -- SHA-256 Document Collision Hash
+    invoice_hash VARCHAR(64) UNIQUE,
     vendor_bank_account VARCHAR(64),
-    fraud_risk_score NUMERIC(5, 2) DEFAULT 0.00, -- 0-100% Risk Score
-    fraud_flags JSONB, -- Array of risk flags: ["UNAPPROVED_BANK_ACCOUNT", "DUPLICATE_HASH"]
+    fraud_risk_score NUMERIC(5, 2) DEFAULT 0.00,
+    fraud_flags JSONB,
     file_path TEXT NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING_OCR',
     ocr_confidence NUMERIC(5, 2),
@@ -86,7 +96,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Extracted Invoice Line Items
+-- 9. Extracted Invoice Line Items
 CREATE TABLE IF NOT EXISTS invoice_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -101,14 +111,19 @@ CREATE TABLE IF NOT EXISTS invoice_items (
 -- Sample Data Seeding
 INSERT INTO vendors (id, name, tax_id, email) VALUES
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Acme Industrial Supplies', 'US-99882211', 'ap@acmeindustrial.com'),
-('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Apex Electronics Tech', 'US-44331100', 'billing@apexelectronics.com'),
-('c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'Nexus Logistics & Freight', 'US-77665544', 'invoices@nexuslogistics.com')
+('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Apex Electronics Tech', 'US-44331100', 'billing@apexelectronics.com')
 ON CONFLICT DO NOTHING;
 
 -- Approved Vendor Master Banks
 INSERT INTO vendor_approved_banks (id, vendor_id, bank_name, routing_number, account_number, status) VALUES
 ('vab-1', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Chase Manhattan Bank', '121000358', 'ACCT-99201100', 'APPROVED'),
 ('vab-2', 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Bank of America', '026009593', 'ACCT-44118822', 'APPROVED')
+ON CONFLICT DO NOTHING;
+
+-- Learned Item Aliases
+INSERT INTO vendor_item_aliases (id, vendor_id, extracted_description, mapped_po_description, times_used) VALUES
+('via-1', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'High Perf Server Chassis 42U', 'High Performance Server Rack 42U', 5),
+('via-2', 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'MCU Microcontroller Chip', 'Industrial Microcontroller Unit (MCU)', 12)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO purchase_orders (id, po_number, vendor_id, status, total_amount, currency, issued_at) VALUES
