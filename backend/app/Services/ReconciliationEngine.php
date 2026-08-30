@@ -17,13 +17,46 @@ class ReconciliationEngine
     }
 
     /**
+     * Allocate lump-sum header fees (Freight, Tax) proportionally across line items.
+     */
+    public function allocateHeaderFees(array $items, float $freightAmount = 0.0, float $taxAmount = 0.0): array
+    {
+        $subtotal = 0.0;
+        foreach ($items as $item) {
+            $subtotal += (float)($item['total_price'] ?? 0.0);
+        }
+
+        return array_map(function ($item) use ($subtotal, $freightAmount, $taxAmount) {
+            $lineTotal = (float)($item['total_price'] ?? 0.0);
+            $qty = (float)($item['quantity'] ?? 1.0);
+            $unitPrice = (float)($item['unit_price'] ?? 0.0);
+
+            $weight = $subtotal > 0 ? ($lineTotal / $subtotal) : (1.0 / count($items));
+            $allocatedFreight = $freightAmount * $weight;
+            $allocatedTax = $taxAmount * $weight;
+            $landedTotal = $lineTotal + $allocatedFreight + $allocatedTax;
+            $landedUnitPrice = $qty > 0 ? ($landedTotal / $qty) : $unitPrice;
+
+            $item['weight_ratio'] = round($weight * 100, 2);
+            $item['allocated_freight'] = round($allocatedFreight, 2);
+            $item['allocated_tax'] = round($allocatedTax, 2);
+            $item['landed_unit_cost'] = round($landedUnitPrice, 2);
+            $item['landed_total_cost'] = round($landedTotal, 2);
+
+            return $item;
+        }, $items);
+    }
+
+    /**
      * Run 2-Way Match between Invoice and Purchase Order.
      */
-    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = []): array
+    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = [], float $freightAmount = 0.0, float $taxAmount = 0.0): array
     {
         $discrepancies = [];
-        $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
+        $rawInvoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
+
+        $invoiceItems = $this->allocateHeaderFees($rawInvoiceItems, $freightAmount, $taxAmount);
 
         $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
         if ($fraudAssessment['is_fraud_flagged']) {
@@ -84,6 +117,8 @@ class ReconciliationEngine
         return [
             'mode' => '2-Way',
             'status' => $finalStatus,
+            'freight_amount' => $freightAmount,
+            'tax_amount' => $taxAmount,
             'fraud_assessment' => $fraudAssessment,
             'discrepancies' => $discrepancies,
             'items' => $updatedItems,
@@ -95,12 +130,14 @@ class ReconciliationEngine
     /**
      * Run 3-Way Match between Invoice, Purchase Order, and Goods Received Note (GRN).
      */
-    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = []): array
+    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = [], float $freightAmount = 0.0, float $taxAmount = 0.0): array
     {
         $discrepancies = [];
-        $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
+        $rawInvoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
         $grnItems = is_array($grn['items']) ? $grn['items'] : [];
+
+        $invoiceItems = $this->allocateHeaderFees($rawInvoiceItems, $freightAmount, $taxAmount);
 
         $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
         if ($fraudAssessment['is_fraud_flagged']) {
@@ -177,6 +214,8 @@ class ReconciliationEngine
         return [
             'mode' => '3-Way',
             'status' => $finalStatus,
+            'freight_amount' => $freightAmount,
+            'tax_amount' => $taxAmount,
             'fraud_assessment' => $fraudAssessment,
             'discrepancies' => $discrepancies,
             'items' => $updatedItems,
@@ -189,7 +228,6 @@ class ReconciliationEngine
 
     public function findBestMatchingPoItem(string $description, array $poItems, array $vendorAliases = [])
     {
-        // 1. Check Vendor Self-Learning Alias Memory
         foreach ($vendorAliases as $alias) {
             $extractedAlias = $alias['extracted_description'] ?? '';
             $mappedPoDesc = $alias['mapped_po_description'] ?? '';
@@ -204,7 +242,6 @@ class ReconciliationEngine
             }
         }
 
-        // 2. Fallback to Fuzzy String Matching
         $bestMatch = null;
         $highestSimilarity = 0;
 

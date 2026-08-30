@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target, BrainCircuit } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target, BrainCircuit, Truck, DollarSign, Percent } from 'lucide-react';
 
 export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, onLearnAlias, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
   
@@ -62,9 +62,9 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
             {invoiceItems.length} Items Parsed
           </span>
         </h4>
-        <span className="text-xs text-sky-400 font-mono flex items-center gap-1">
-          <BrainCircuit className="w-3.5 h-3.5" />
-          Vendor Memory Self-Learning Engine Active
+        <span className="text-xs text-amber-400 font-mono flex items-center gap-1">
+          <Truck className="w-3.5 h-3.5" />
+          Proportional Landed Inventory Costing Active
         </span>
       </div>
 
@@ -79,6 +79,7 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
                 <th className="py-3 px-3 font-medium text-center text-purple-300">GRN Rec. Qty</th>
               )}
               <th className="py-3 px-3 font-medium text-right">Billed Price</th>
+              <th className="py-3 px-3 font-medium text-right text-amber-300">Landed Unit Cost</th>
               <th className="py-3 px-3 font-medium text-right">PO Price</th>
               <th className="py-3 px-4 font-medium text-center">Reconciliation Status</th>
               <th className="py-3 px-3 font-medium text-center">Actions</th>
@@ -90,6 +91,13 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
               const isHovered = activeHoverItem === fieldKey || activeHoverItem === index;
               const isFocused = selectedFocusItem === fieldKey;
               const matchedPo = poItems.find(p => p.item_description?.toLowerCase().includes(item.description?.toLowerCase().substring(0, 8)));
+
+              const landedUnitCost = item.landed_unit_cost !== undefined 
+                ? item.landed_unit_cost 
+                : item.unit_price;
+
+              const allocFreight = item.allocated_freight || 0;
+              const allocTax = item.allocated_tax || 0;
 
               return (
                 <tr 
@@ -157,6 +165,18 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
                             : 'border-slate-700 text-slate-200 focus:ring-indigo-500'
                         }`}
                       />
+                    </div>
+                  </td>
+
+                  {/* Landed Unit Cost (Base Price + Allocated Freight & Tax) */}
+                  <td className="py-3 px-3 text-right bg-amber-950/10 font-mono font-bold text-amber-300">
+                    <div title={`Allocated Freight: +$${allocFreight.toFixed(2)} | Allocated Tax: +$${allocTax.toFixed(2)}`}>
+                      ${landedUnitCost.toFixed(2)}
+                      {(allocFreight > 0 || allocTax > 0) && (
+                        <div className="text-[10px] text-amber-400/80 font-normal">
+                          (+${(allocFreight + allocTax).toFixed(2)})
+                        </div>
+                      )}
                     </div>
                   </td>
 

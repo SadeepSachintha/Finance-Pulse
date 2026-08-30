@@ -5,51 +5,38 @@ require_once __DIR__ . '/app/Services/FraudEngine.php';
 
 use App\Services\ReconciliationEngine;
 
-echo "=== FinancePulse Reconciliation & Vendor Self-Learning Test Suite ===\n\n";
+echo "=== FinancePulse Reconciliation, Vendor Memory & Freight/Tax Splitter Test Suite ===\n\n";
 
 $reconcileEngine = new ReconciliationEngine();
 
-$vendorAliases = [
+$items = [
     [
-        'vendor_id' => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        'extracted_description' => 'High Perf Server Chassis 42U', // Abbreviated text extracted by OCR!
-        'mapped_po_description' => 'High Performance Server Rack 42U' // Master PO description
+        'description' => 'High Performance Server Rack 42U',
+        'quantity' => 2.00,
+        'unit_price' => 1500.00,
+        'total_price' => 3000.00
+    ],
+    [
+        'description' => 'Cat6A Shielded Ethernet Cable 100m',
+        'quantity' => 10.00,
+        'unit_price' => 125.00,
+        'total_price' => 1250.00
     ]
 ];
 
-$po = [
-    'id' => 'po-99201-uuid',
-    'po_number' => 'PO-99201',
-    'items' => [
-        [
-            'id' => 'poi-1',
-            'item_description' => 'High Performance Server Rack 42U',
-            'quantity' => 2.00,
-            'unit_price' => 1500.00,
-            'total_price' => 3000.00
-        ]
-    ]
-];
+$freightAmount = 150.00;
+$taxAmount = 240.00;
 
-$invoiceWithAbbreviation = [
-    'invoice_number' => 'INV-2026-004',
-    'vendor_name' => 'Acme Industrial Supplies',
-    'total_amount' => 3000.00,
-    'items' => [
-        [
-            'description' => 'High Perf Server Chassis 42U', // Extracted OCR text with abbreviation
-            'quantity' => 2.00,
-            'unit_price' => 1500.00,
-            'total_price' => 3000.00
-        ]
-    ]
-];
+echo "Test 1: Testing Proportional Header Fee Allocation (Freight \$150, Tax \$240)...\n";
+$allocatedItems = $reconcileEngine->allocateHeaderFees($items, $freightAmount, $taxAmount);
 
-echo "Test 1: Running Match using Vendor Self-Learning Memory (INV-2026-004)...\n";
-$res = $reconcileEngine->reconcile($invoiceWithAbbreviation, $po, [], [], $vendorAliases);
+foreach ($allocatedItems as $idx => $it) {
+    echo "Item " . ($idx + 1) . ": " . $it['description'] . "\n";
+    echo "  Weight Ratio: " . $it['weight_ratio'] . "%\n";
+    echo "  Allocated Freight: \$" . $it['allocated_freight'] . "\n";
+    echo "  Allocated Tax: \$" . $it['allocated_tax'] . "\n";
+    echo "  Base Unit Price: \$" . $it['unit_price'] . "\n";
+    echo "  Landed Unit Cost: \$" . $it['landed_unit_cost'] . "\n\n";
+}
 
-echo "Final Status: " . $res['status'] . "\n";
-echo "Item Status: " . $res['items'][0]['reconciliation_status'] . "\n";
-echo "Is Learned Alias: " . ($res['items'][0]['is_learned_alias'] ? 'YES (100% Learned Memory Match)' : 'NO') . "\n";
-
-echo "\n=== Test Suite Complete ===\n";
+echo "=== Test Suite Complete ===\n";

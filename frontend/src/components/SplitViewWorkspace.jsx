@@ -18,7 +18,9 @@ import {
   ShieldAlert,
   Lock,
   Landmark,
-  BrainCircuit
+  BrainCircuit,
+  Truck,
+  Receipt
 } from 'lucide-react';
 
 export default function SplitViewWorkspace({ 
@@ -37,6 +39,9 @@ export default function SplitViewWorkspace({
   const [erpSyncing, setErpSyncing] = useState(false);
   const [notification, setNotification] = useState(null);
   const [matchMode, setMatchMode] = useState('3way');
+
+  const [freightAmount, setFreightAmount] = useState(150.00);
+  const [taxAmount, setTaxAmount] = useState(240.00);
 
   const currentPo = purchaseOrders.find(p => p.id === selectedPoId || p.po_number === selectedPoId) || purchaseOrders[0];
 
@@ -80,7 +85,6 @@ export default function SplitViewWorkspace({
       // handled
     }
 
-    // Flag item as learned alias locally
     const updatedItems = (invoiceData.items || []).map(it => {
       if (it.description === extracted) {
         return { ...it, reconciliation_status: 'LEARNED_ALIAS_MATCH', is_learned_alias: true };
@@ -94,9 +98,9 @@ export default function SplitViewWorkspace({
 
   const handleReconcileClick = async () => {
     setIsReconciling(true);
-    await onRunReconcile(selectedPoId, matchMode);
+    await onRunReconcile(selectedPoId, matchMode, freightAmount, taxAmount);
     setIsReconciling(false);
-    showNotification(`${matchMode === '3way' ? '3-Way GRN' : '2-Way PO'} Reconciliation complete!`);
+    showNotification(`${matchMode === '3way' ? '3-Way GRN' : '2-Way PO'} Reconciliation with Landed Cost Splitter complete!`);
   };
 
   const handleErpSyncClick = async () => {
@@ -111,7 +115,7 @@ export default function SplitViewWorkspace({
   };
 
   const handleExportCsv = () => {
-    const headers = ["InvoiceNumber", "Vendor", "PO", "Description", "BilledQty", "POQty", "GRNQty", "UnitPrice", "TotalPrice", "Status", "FraudRiskScore"];
+    const headers = ["InvoiceNumber", "Vendor", "PO", "Description", "BilledQty", "POQty", "GRNQty", "BilledUnitPrice", "LandedUnitPrice", "TotalPrice", "Status", "FraudRiskScore"];
     const rows = (invoiceData.items || []).map(it => [
       invoiceData.invoice_number,
       invoiceData.vendor_name,
@@ -121,6 +125,7 @@ export default function SplitViewWorkspace({
       currentPo?.items[0]?.quantity || 0,
       it.grn_received_qty !== undefined ? it.grn_received_qty : (currentPo?.items[0]?.quantity || 0),
       it.unit_price,
+      it.landed_unit_cost || it.unit_price,
       it.total_price,
       it.reconciliation_status,
       `${fraudAssessment.fraud_risk_score}%`
@@ -143,8 +148,9 @@ export default function SplitViewWorkspace({
   };
 
   const totalPoAmount = currentPo?.total_amount || 0;
-  const invTotalAmount = invoiceData.total_amount || 0;
-  const netVariance = invTotalAmount - totalPoAmount;
+  const invItemsTotal = (invoiceData.items || []).reduce((acc, it) => acc + (it.total_price || 0), 0);
+  const totalLandedExpense = invItemsTotal + freightAmount + taxAmount;
+  const netVariance = totalLandedExpense - totalPoAmount;
 
   return (
     <div className="flex flex-col gap-4">
@@ -227,7 +233,38 @@ export default function SplitViewWorkspace({
               </div>
             </div>
 
-            {/* Match Mode Switcher & Controls */}
+            {/* Freight & Sales Tax Allocation Control Panel (Enhancement #5) */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold font-heading text-amber-300 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-amber-400" />
+                  Line-Item Tax & Freight Allocation Splitter
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Proportional Landed Costing</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono text-slate-400 mb-1 block">Lump-Sum Freight / Delivery ($)</label>
+                  <input
+                    type="number"
+                    value={freightAmount}
+                    onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono text-slate-400 mb-1 block">Sales Tax ($)</label>
+                  <input
+                    type="number"
+                    value={taxAmount}
+                    onChange={(e) => setTaxAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Target PO & Bank Account */}
             <div className="grid grid-cols-2 gap-4 pb-4 mb-4 border-b border-slate-800">
               <div>
                 <label className="text-[11px] font-mono uppercase text-slate-400 mb-1 block">Target Purchase Order</label>
@@ -265,8 +302,8 @@ export default function SplitViewWorkspace({
             {/* Metrics Strip */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                <p className="text-[11px] text-slate-400 font-mono">Invoice Billed Total</p>
-                <p className="text-lg font-bold font-mono text-slate-100">${invTotalAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p className="text-[11px] text-slate-400 font-mono">Invoice Landed Total</p>
+                <p className="text-lg font-bold font-mono text-slate-100">${totalLandedExpense.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
