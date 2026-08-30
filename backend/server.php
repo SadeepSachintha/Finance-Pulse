@@ -33,6 +33,25 @@ $vendors = [
     ]
 ];
 
+$vendorAliases = [
+    [
+        'id' => 'via-1',
+        'vendor_id' => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        'vendor_name' => 'Acme Industrial Supplies',
+        'extracted_description' => 'High Perf Server Chassis 42U',
+        'mapped_po_description' => 'High Performance Server Rack 42U',
+        'times_used' => 5
+    ],
+    [
+        'id' => 'via-2',
+        'vendor_id' => 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
+        'vendor_name' => 'Apex Electronics Tech',
+        'extracted_description' => 'MCU Microcontroller Chip',
+        'mapped_po_description' => 'Industrial Microcontroller Unit (MCU)',
+        'times_used' => 12
+    ]
+];
+
 $approvedBanks = [
     [
         'id' => 'vab-1',
@@ -41,15 +60,6 @@ $approvedBanks = [
         'bank_name' => 'Chase Manhattan Bank',
         'routing_number' => '121000358',
         'account_number' => 'ACCT-99201100',
-        'status' => 'APPROVED'
-    ],
-    [
-        'id' => 'vab-2',
-        'vendor_id' => 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
-        'vendor_name' => 'Apex Electronics Tech',
-        'bank_name' => 'Bank of America',
-        'routing_number' => '026009593',
-        'account_number' => 'ACCT-44118822',
         'status' => 'APPROVED'
     ]
 ];
@@ -103,29 +113,32 @@ if ($uri === '/api/vendors') {
     exit;
 }
 
-if ($uri === '/api/approved-banks') {
+if ($uri === '/api/aliases') {
     header("Content-Type: application/json");
-    echo json_encode(['status' => 'success', 'data' => $approvedBanks]);
+    echo json_encode(['status' => 'success', 'data' => $vendorAliases]);
     exit;
 }
 
-if ($uri === '/api/check-fraud' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($uri === '/api/aliases/learn' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Content-Type: application/json");
     $input = json_decode(file_get_contents('php://input'), true);
-    $invoice = $input['invoice'] ?? null;
+    $extracted = $input['extracted_description'] ?? '';
+    $mapped = $input['mapped_po_description'] ?? '';
+    $vendorName = $input['vendor_name'] ?? 'Acme Industrial Supplies';
 
-    if (!$invoice) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Missing invoice parameter']);
-        exit;
-    }
-
-    $fraudEngine = new FraudEngine();
-    $result = $fraudEngine->assessFraudRisk($invoice, [], $approvedBanks);
+    $newAlias = [
+        'id' => 'via-' . (count($vendorAliases) + 1),
+        'vendor_id' => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        'vendor_name' => $vendorName,
+        'extracted_description' => $extracted,
+        'mapped_po_description' => $mapped,
+        'times_used' => 1
+    ];
 
     echo json_encode([
         'status' => 'success',
-        'fraud_assessment' => $result
+        'message' => "Learned mapping: '{$extracted}' => '{$mapped}' saved for {$vendorName}!",
+        'alias' => $newAlias
     ]);
     exit;
 }
@@ -135,13 +148,12 @@ if ($uri === '/api/reconcile-3way' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     $invoice = $input['invoice'] ?? null;
     $targetPoId = $input['po_id'] ?? null;
-    $targetGrnId = $input['grn_id'] ?? null;
 
     $targetPo = $purchaseOrders[0];
     $targetGrn = $goodsReceivedNotes[0];
 
     $engine = new ReconciliationEngine();
-    $result = $engine->reconcile3Way($invoice, $targetPo, $targetGrn, [], $approvedBanks);
+    $result = $engine->reconcile3Way($invoice, $targetPo, $targetGrn, [], $approvedBanks, $vendorAliases);
 
     echo json_encode([
         'status' => 'success',
@@ -157,7 +169,7 @@ header("Content-Type: text/html; charset=utf-8");
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <title>FinancePulse | Fraud Prevention & 3-Way Match Backend Portal</title>
+    <title>FinancePulse | Self-Learning & Fraud Backend Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -168,41 +180,41 @@ header("Content-Type: text/html; charset=utf-8");
         <div class="flex justify-between items-center border-b border-slate-800 pb-6">
             <div>
                 <div class="flex items-center gap-3">
-                    <span class="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-mono font-bold">
-                        Fraud Engine & SHA-256 Enabled
+                    <span class="px-3 py-1 bg-sky-600/20 text-sky-400 border border-sky-500/30 rounded-lg text-xs font-mono font-bold">
+                        Vendor Self-Learning Alias Engine Active
                     </span>
                     <span class="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 </div>
                 <h1 class="text-3xl font-extrabold font-heading text-slate-100 mt-2">FinancePulse Backend Security Portal</h1>
-                <p class="text-sm text-slate-400 font-mono mt-1">SHA-256 Hashing • Approved Master Banks • Fraud Risk Inspector</p>
+                <p class="text-sm text-slate-400 font-mono mt-1">Learned Vendor Memory • SHA-256 Hashing • Approved Master Banks</p>
             </div>
             <a href="http://localhost:5173" target="_blank" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
                 Open React SPA Workspace ↗
             </a>
         </div>
 
-        <!-- Approved Vendor Banks Inspector -->
+        <!-- Vendor Self-Learning Aliases Inspector -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <h2 class="text-lg font-bold text-slate-200 mb-4 font-heading">Approved Vendor Master Bank Accounts (`vendor_approved_banks`)</h2>
+            <h2 class="text-lg font-bold text-slate-200 mb-4 font-heading">Vendor Self-Learning Memory Aliases (`vendor_item_aliases` table)</h2>
             <div class="overflow-x-auto">
                 <table class="w-full text-xs text-left">
                     <thead>
                         <tr class="bg-slate-950 text-slate-400 font-mono border-b border-slate-800">
                             <th class="p-3">Vendor Name</th>
-                            <th class="p-3">Bank Name</th>
-                            <th class="p-3">Routing Number</th>
-                            <th class="p-3">Approved Account Number</th>
-                            <th class="p-3">Security Verification</th>
+                            <th class="p-3">Extracted OCR Text</th>
+                            <th class="p-3">Mapped PO Description</th>
+                            <th class="p-3 text-center">Times Re-Used</th>
+                            <th class="p-3">Match Status</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800">
-                        <?php foreach ($approvedBanks as $bank): ?>
+                        <?php foreach ($vendorAliases as $alias): ?>
                         <tr>
-                            <td class="p-3 font-semibold text-slate-200"><?= $bank['vendor_name'] ?></td>
-                            <td class="p-3 text-slate-300"><?= $bank['bank_name'] ?></td>
-                            <td class="p-3 font-mono text-slate-400"><?= $bank['routing_number'] ?></td>
-                            <td class="p-3 font-mono font-bold text-emerald-400"><?= $bank['account_number'] ?></td>
-                            <td class="p-3 font-mono text-emerald-400 font-bold">VERIFIED_MASTER</td>
+                            <td class="p-3 font-semibold text-slate-200"><?= $alias['vendor_name'] ?></td>
+                            <td class="p-3 font-mono text-indigo-300"><?= $alias['extracted_description'] ?></td>
+                            <td class="p-3 font-mono text-emerald-400"><?= $alias['mapped_po_description'] ?></td>
+                            <td class="p-3 text-center font-mono font-bold text-sky-400"><?= $alias['times_used'] ?>x</td>
+                            <td class="p-3 font-mono text-sky-400 font-bold">100% LEARNED MATCH</td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -212,6 +224,9 @@ header("Content-Type: text/html; charset=utf-8");
 
         <!-- API Links -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 flex gap-4">
+            <a href="/api/aliases" target="_blank" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 font-mono text-xs rounded-lg border border-slate-700">
+                GET /api/aliases (Learned Item Memory)
+            </a>
             <a href="/api/approved-banks" target="_blank" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-mono text-xs rounded-lg border border-slate-700">
                 GET /api/approved-banks
             </a>

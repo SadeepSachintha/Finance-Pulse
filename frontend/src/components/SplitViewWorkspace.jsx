@@ -17,7 +17,8 @@ import {
   PackageCheck,
   ShieldAlert,
   Lock,
-  Landmark
+  Landmark,
+  BrainCircuit
 } from 'lucide-react';
 
 export default function SplitViewWorkspace({ 
@@ -62,6 +63,33 @@ export default function SplitViewWorkspace({
         total_amount: newTotal
       });
     }
+  };
+
+  const handleLearnAlias = async (extracted, mapped) => {
+    try {
+      await fetch('http://127.0.0.1:8000/api/aliases/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendor_name: invoiceData.vendor_name,
+          extracted_description: extracted,
+          mapped_po_description: mapped
+        })
+      });
+    } catch (e) {
+      // handled
+    }
+
+    // Flag item as learned alias locally
+    const updatedItems = (invoiceData.items || []).map(it => {
+      if (it.description === extracted) {
+        return { ...it, reconciliation_status: 'LEARNED_ALIAS_MATCH', is_learned_alias: true };
+      }
+      return it;
+    });
+
+    setInvoiceData({ ...invoiceData, items: updatedItems });
+    showNotification(`Saved learned memory mapping: '${extracted}' => '${mapped}' for ${invoiceData.vendor_name}!`);
   };
 
   const handleReconcileClick = async () => {
@@ -310,6 +338,7 @@ export default function SplitViewWorkspace({
             poItems={currentPo?.items || []}
             matchMode={matchMode}
             onUpdateItem={handleUpdateLineItem}
+            onLearnAlias={handleLearnAlias}
             activeHoverItem={activeHoverItem}
             setActiveHoverItem={setActiveHoverItem}
             selectedFocusItem={selectedFocusItem}

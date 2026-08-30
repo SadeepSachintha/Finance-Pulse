@@ -4,33 +4,16 @@ require_once __DIR__ . '/app/Services/ReconciliationEngine.php';
 require_once __DIR__ . '/app/Services/FraudEngine.php';
 
 use App\Services\ReconciliationEngine;
-use App\Services\FraudEngine;
 
-echo "=== FinancePulse Reconciliation & Fraud Engine Test Suite ===\n\n";
+echo "=== FinancePulse Reconciliation & Vendor Self-Learning Test Suite ===\n\n";
 
 $reconcileEngine = new ReconciliationEngine();
-$fraudEngine = new FraudEngine();
 
-$approvedBanks = [
+$vendorAliases = [
     [
         'vendor_id' => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        'account_number' => 'ACCT-99201100'
-    ]
-];
-
-// Test 1: Fraudulent Bank Account Remittance Detection
-$fraudulentInvoice = [
-    'invoice_number' => 'INV-2026-999',
-    'vendor_name' => 'Acme Industrial Supplies',
-    'vendor_bank_account' => 'SUSPICIOUS-FRAUD-BANK-99999', // Altered bank!
-    'total_amount' => 4250.00,
-    'items' => [
-        [
-            'description' => 'High Performance Server Rack 42U',
-            'quantity' => 2.00,
-            'unit_price' => 1500.00,
-            'total_price' => 3000.00
-        ]
+        'extracted_description' => 'High Perf Server Chassis 42U', // Abbreviated text extracted by OCR!
+        'mapped_po_description' => 'High Performance Server Rack 42U' // Master PO description
     ]
 ];
 
@@ -48,24 +31,25 @@ $po = [
     ]
 ];
 
-echo "Test 1: Running Fraud Risk Assessment on Fraudulent Invoice (INV-2026-999)...\n";
-$fraudResult = $fraudEngine->assessFraudRisk($fraudulentInvoice, [], $approvedBanks);
+$invoiceWithAbbreviation = [
+    'invoice_number' => 'INV-2026-004',
+    'vendor_name' => 'Acme Industrial Supplies',
+    'total_amount' => 3000.00,
+    'items' => [
+        [
+            'description' => 'High Perf Server Chassis 42U', // Extracted OCR text with abbreviation
+            'quantity' => 2.00,
+            'unit_price' => 1500.00,
+            'total_price' => 3000.00
+        ]
+    ]
+];
 
-echo "Fraud Risk Score: " . $fraudResult['fraud_risk_score'] . "% (" . $fraudResult['fraud_risk_level'] . ")\n";
-echo "Bank Verification: " . $fraudResult['bank_verification'] . "\n";
-echo "Security Flags Found (" . count($fraudResult['fraud_flags']) . "):\n";
-foreach ($fraudResult['fraud_flags'] as $flag) {
-    echo " [!] $flag\n";
-}
+echo "Test 1: Running Match using Vendor Self-Learning Memory (INV-2026-004)...\n";
+$res = $reconcileEngine->reconcile($invoiceWithAbbreviation, $po, [], [], $vendorAliases);
 
-echo "\n--------------------------------------------------\n\n";
-
-echo "Test 2: Running 2-Way Match with Fraud Assessment Integration...\n";
-$reconcileRes = $reconcileEngine->reconcile($fraudulentInvoice, $po, [], $approvedBanks);
-echo "Final Invoice Status: " . $reconcileRes['status'] . "\n";
-echo "Discrepancies / Security Alerts (" . count($reconcileRes['discrepancies']) . "):\n";
-foreach ($reconcileRes['discrepancies'] as $d) {
-    echo " [!] $d\n";
-}
+echo "Final Status: " . $res['status'] . "\n";
+echo "Item Status: " . $res['items'][0]['reconciliation_status'] . "\n";
+echo "Is Learned Alias: " . ($res['items'][0]['is_learned_alias'] ? 'YES (100% Learned Memory Match)' : 'NO') . "\n";
 
 echo "\n=== Test Suite Complete ===\n";

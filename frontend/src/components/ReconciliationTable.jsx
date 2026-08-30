@@ -1,9 +1,18 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target, BrainCircuit } from 'lucide-react';
 
-export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
+export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, onLearnAlias, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
   
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, isLearned) => {
+    if (isLearned || status === 'LEARNED_ALIAS_MATCH') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-950/80 text-sky-300 border border-sky-500/40">
+          <BrainCircuit className="w-3.5 h-3.5 text-sky-400" />
+          LEARNED ALIAS MATCH
+        </span>
+      );
+    }
+
     switch (status) {
       case 'MATCHED':
         return (
@@ -54,8 +63,8 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
           </span>
         </h4>
         <span className="text-xs text-sky-400 font-mono flex items-center gap-1">
-          <Target className="w-3.5 h-3.5" />
-          Click row to auto-zoom document box
+          <BrainCircuit className="w-3.5 h-3.5" />
+          Vendor Memory Self-Learning Engine Active
         </span>
       </div>
 
@@ -158,35 +167,33 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
 
                   {/* Reconciliation Status */}
                   <td className="py-3 px-4 text-center">
-                    {getStatusBadge(item.reconciliation_status)}
+                    {getStatusBadge(item.reconciliation_status, item.is_learned_alias)}
                   </td>
 
-                  {/* Focus & Quick Action */}
+                  {/* Actions */}
                   <td className="py-3 px-3 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onLearnAlias && matchedPo) {
+                            onLearnAlias(item.description, matchedPo.item_description);
+                          }
+                        }}
+                        title="Save to Vendor Self-Learning Alias Memory"
+                        className="p-1 rounded bg-slate-800 hover:bg-sky-600/30 text-slate-300 hover:text-sky-300 border border-slate-700 transition"
+                      >
+                        <BrainCircuit className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedFocusItem(fieldKey);
                         }}
                         title="Zoom canvas to target bounding box"
-                        className="p-1 rounded bg-slate-800 hover:bg-sky-600/30 text-slate-300 hover:text-sky-300 border border-slate-700 transition"
-                      >
-                        <Target className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (matchedPo) {
-                            const targetQty = matchMode === '3way' && item.grn_received_qty !== undefined ? item.grn_received_qty : matchedPo.quantity;
-                            onUpdateItem(index, 'quantity', targetQty);
-                            onUpdateItem(index, 'unit_price', matchedPo.unit_price);
-                          }
-                        }}
-                        title="Force align billed values to physical receipt/PO"
                         className="p-1 rounded bg-slate-800 hover:bg-indigo-600/30 text-slate-300 hover:text-indigo-300 border border-slate-700 transition"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
+                        <Target className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
