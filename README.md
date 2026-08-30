@@ -6,6 +6,15 @@ FinancePulse is an enterprise-grade financial intelligence platform that automat
 
 ---
 
+## ⚡ One-Click Windows Launchers
+
+Double-click the batch files in the root folder to start or stop the entire platform with a single click:
+
+- 🚀 **`run_finance_pulse.bat`**: Launches PHP API Server (Port 8000), Python OCR Service (Port 8001), React Vite Workspace (Port 5173), and opens `http://localhost:5173/` in your browser.
+- 🛑 **`stop_finance_pulse.bat`**: Gracefully terminates all active FinancePulse microservices.
+
+---
+
 ## 🌟 Key Platform Features
 
 1. **OCR Document Intake & SVG Bounding Box Canvas**: Interactive document viewer built with dynamic SVG bounding box overlays, smooth auto-scroll Y/X math, and animated focus rings.
@@ -46,39 +55,6 @@ FinancePulse is an enterprise-grade financial intelligence platform that automat
 - **Backend API**: PHP 8.x server with REST endpoints, 3-Way Match service, Fraud Engine, Currency Converter, and Admin Portal (`backend/`).
 - **OCR Microservice**: Python FastAPI service with PaddleOCR and heuristic vision fallback (`ocr_service/`).
 - **Database**: Full DDL schema with 3-Way GRN tables, approved master banks, and vendor self-learning memory (`database/init_schema.sql`).
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- **Node.js** (v18+)
-- **PHP** (8.0+)
-- **Python** (3.9+)
-
-### Running Locally
-
-1. **Start PHP API Server & Security Admin Portal**:
-   ```bash
-   php -S 127.0.0.1:8000 backend/server.php
-   ```
-
-2. **Start FastAPI OCR Microservice**:
-   ```bash
-   python -m uvicorn ocr_service.main:app --port 8001
-   ```
-
-3. **Start React Vite Dev Server**:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-4. **Access Applications**:
-   - **React SPA Workspace**: `http://localhost:5173/`
-   - **Backend Security Portal**: `http://127.0.0.1:8000/`
-   - **FastAPI OCR API Docs**: `http://127.0.0.1:8001/docs`
 
 ---
 
