@@ -1,94 +1,71 @@
 <?php
 
 require_once __DIR__ . '/app/Services/ReconciliationEngine.php';
+require_once __DIR__ . '/app/Services/FraudEngine.php';
 
 use App\Services\ReconciliationEngine;
+use App\Services\FraudEngine;
 
-echo "=== FinancePulse Reconciliation Engine Test Suite (2-Way & 3-Way) ===\n\n";
+echo "=== FinancePulse Reconciliation & Fraud Engine Test Suite ===\n\n";
 
-$engine = new ReconciliationEngine();
+$reconcileEngine = new ReconciliationEngine();
+$fraudEngine = new FraudEngine();
 
-// Test Purchase Order
+$approvedBanks = [
+    [
+        'vendor_id' => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        'account_number' => 'ACCT-99201100'
+    ]
+];
+
+// Test 1: Fraudulent Bank Account Remittance Detection
+$fraudulentInvoice = [
+    'invoice_number' => 'INV-2026-999',
+    'vendor_name' => 'Acme Industrial Supplies',
+    'vendor_bank_account' => 'SUSPICIOUS-FRAUD-BANK-99999', // Altered bank!
+    'total_amount' => 4250.00,
+    'items' => [
+        [
+            'description' => 'High Performance Server Rack 42U',
+            'quantity' => 2.00,
+            'unit_price' => 1500.00,
+            'total_price' => 3000.00
+        ]
+    ]
+];
+
 $po = [
-    'id' => 'po-88410-uuid',
-    'po_number' => 'PO-88410',
+    'id' => 'po-99201-uuid',
+    'po_number' => 'PO-99201',
     'items' => [
         [
-            'id' => 'poi-3',
-            'item_description' => 'Industrial Microcontroller Unit (MCU)',
-            'quantity' => 50.00,
-            'unit_price' => 150.00,
-            'total_price' => 7500.00
-        ],
-        [
-            'id' => 'poi-4',
-            'item_description' => 'Precision Heat Sink Module',
-            'quantity' => 40.00,
-            'unit_price' => 30.00,
-            'total_price' => 1200.00
+            'id' => 'poi-1',
+            'item_description' => 'High Performance Server Rack 42U',
+            'quantity' => 2.00,
+            'unit_price' => 1500.00,
+            'total_price' => 3000.00
         ]
     ]
 ];
 
-// Test Goods Received Note (GRN - Partial Shipment: only 35 MCU units physically arrived!)
-$grn = [
-    'id' => 'grn-88410-uuid',
-    'grn_number' => 'GRN-88410-A',
-    'po_id' => 'po-88410-uuid',
-    'items' => [
-        [
-            'id' => 'grni-3',
-            'po_item_id' => 'poi-3',
-            'received_quantity' => 35.00,
-            'accepted_quantity' => 35.00,
-            'notes' => 'Partial shipment received'
-        ],
-        [
-            'id' => 'grni-4',
-            'po_item_id' => 'poi-4',
-            'received_quantity' => 40.00,
-            'accepted_quantity' => 40.00,
-            'notes' => 'Full shipment'
-        ]
-    ]
-];
+echo "Test 1: Running Fraud Risk Assessment on Fraudulent Invoice (INV-2026-999)...\n";
+$fraudResult = $fraudEngine->assessFraudRisk($fraudulentInvoice, [], $approvedBanks);
 
-// Invoice Billed for Full 50 MCU units (Vendor billing for 15 unreceived units!)
-$invoice = [
-    'id' => 'inv-002',
-    'invoice_number' => 'INV-2026-002',
-    'items' => [
-        [
-            'description' => 'Industrial Microcontroller Unit (MCU)',
-            'quantity' => 50.00, // Vendor billed 50, but GRN shows only 35 arrived!
-            'unit_price' => 150.00,
-            'total_price' => 7500.00
-        ],
-        [
-            'description' => 'Precision Heat Sink Module',
-            'quantity' => 40.00,
-            'unit_price' => 30.00,
-            'total_price' => 1200.00
-        ]
-    ]
-];
-
-echo "Test 1: Running 2-Way Match (Invoice vs PO-88410)...\n";
-$res2Way = $engine->reconcile($invoice, $po);
-echo "Result Status: " . $res2Way['status'] . "\n";
-echo "Discrepancies: " . count($res2Way['discrepancies']) . "\n";
+echo "Fraud Risk Score: " . $fraudResult['fraud_risk_score'] . "% (" . $fraudResult['fraud_risk_level'] . ")\n";
+echo "Bank Verification: " . $fraudResult['bank_verification'] . "\n";
+echo "Security Flags Found (" . count($fraudResult['fraud_flags']) . "):\n";
+foreach ($fraudResult['fraud_flags'] as $flag) {
+    echo " [!] $flag\n";
+}
 
 echo "\n--------------------------------------------------\n\n";
 
-echo "Test 2: Running 3-Way Match (Invoice vs PO-88410 vs Physical GRN-88410-A)...\n";
-$res3Way = $engine->reconcile3Way($invoice, $po, $grn);
-echo "Result Status: " . $res3Way['status'] . "\n";
-echo "Discrepancies Found (" . count($res3Way['discrepancies']) . "):\n";
-foreach ($res3Way['discrepancies'] as $d) {
+echo "Test 2: Running 2-Way Match with Fraud Assessment Integration...\n";
+$reconcileRes = $reconcileEngine->reconcile($fraudulentInvoice, $po, [], $approvedBanks);
+echo "Final Invoice Status: " . $reconcileRes['status'] . "\n";
+echo "Discrepancies / Security Alerts (" . count($reconcileRes['discrepancies']) . "):\n";
+foreach ($reconcileRes['discrepancies'] as $d) {
     echo " [!] $d\n";
-}
-foreach ($res3Way['items'] as $item) {
-    echo " - Item: '{$item['description']}' => Status: {$item['reconciliation_status']} (GRN Accepted Qty: " . ($item['grn_received_qty'] ?? 'N/A') . ")\n";
 }
 
 echo "\n=== Test Suite Complete ===\n";

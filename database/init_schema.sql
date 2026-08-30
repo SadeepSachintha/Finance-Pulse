@@ -10,7 +10,18 @@ CREATE TABLE IF NOT EXISTS vendors (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Purchase Orders Table
+-- 2. Approved Vendor Master Bank Accounts (Fraud Prevention)
+CREATE TABLE IF NOT EXISTS vendor_approved_banks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    bank_name VARCHAR(255) NOT NULL,
+    routing_number VARCHAR(64) NOT NULL,
+    account_number VARCHAR(64) NOT NULL,
+    status VARCHAR(32) DEFAULT 'APPROVED',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Purchase Orders Table
 CREATE TABLE IF NOT EXISTS purchase_orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     po_number VARCHAR(64) NOT NULL UNIQUE,
@@ -22,7 +33,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. PO Line Items
+-- 4. PO Line Items
 CREATE TABLE IF NOT EXISTS po_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     po_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
@@ -32,7 +43,7 @@ CREATE TABLE IF NOT EXISTS po_items (
     total_price NUMERIC(12, 2) NOT NULL
 );
 
--- 4. Goods Received Notes (GRN - 3-Way Match Warehouse Receipts)
+-- 5. Goods Received Notes (GRN - 3-Way Match Warehouse Receipts)
 CREATE TABLE IF NOT EXISTS goods_received_notes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     grn_number VARCHAR(64) NOT NULL UNIQUE,
@@ -40,11 +51,11 @@ CREATE TABLE IF NOT EXISTS goods_received_notes (
     vendor_id UUID NOT NULL REFERENCES vendors(id),
     received_at DATE NOT NULL,
     receiver_name VARCHAR(255) NOT NULL,
-    status VARCHAR(32) DEFAULT 'VERIFIED', -- 'VERIFIED', 'PARTIAL_DELIVERY', 'REJECTED'
+    status VARCHAR(32) DEFAULT 'VERIFIED',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. GRN Physical Line Items
+-- 6. GRN Physical Line Items
 CREATE TABLE IF NOT EXISTS grn_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     grn_id UUID NOT NULL REFERENCES goods_received_notes(id) ON DELETE CASCADE,
@@ -54,15 +65,19 @@ CREATE TABLE IF NOT EXISTS grn_items (
     notes TEXT
 );
 
--- 6. Extracted Invoices Table
+-- 7. Extracted Invoices Table (With Fraud Engine Columns)
 CREATE TABLE IF NOT EXISTS invoices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     matched_po_id UUID REFERENCES purchase_orders(id),
     matched_grn_id UUID REFERENCES goods_received_notes(id),
     vendor_id UUID REFERENCES vendors(id),
     invoice_number VARCHAR(64),
+    invoice_hash VARCHAR(64) UNIQUE, -- SHA-256 Document Collision Hash
+    vendor_bank_account VARCHAR(64),
+    fraud_risk_score NUMERIC(5, 2) DEFAULT 0.00, -- 0-100% Risk Score
+    fraud_flags JSONB, -- Array of risk flags: ["UNAPPROVED_BANK_ACCOUNT", "DUPLICATE_HASH"]
     file_path TEXT NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_OCR', -- 'PENDING_OCR', 'MATCHED', 'DISCREPANCY', 'APPROVED'
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_OCR',
     ocr_confidence NUMERIC(5, 2),
     total_amount NUMERIC(12, 2),
     tax_amount NUMERIC(12, 2),
@@ -71,7 +86,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. Extracted Invoice Line Items
+-- 8. Extracted Invoice Line Items
 CREATE TABLE IF NOT EXISTS invoice_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -79,8 +94,8 @@ CREATE TABLE IF NOT EXISTS invoice_items (
     quantity NUMERIC(10, 2),
     unit_price NUMERIC(12, 2),
     total_price NUMERIC(12, 2),
-    bounding_box JSONB, -- Coordinates: {"x": 120, "y": 450, "w": 300, "h": 25}
-    reconciliation_status VARCHAR(32) DEFAULT 'UNMATCHED' -- 'MATCHED', 'PRICE_MISMATCH', 'QTY_EXCEEDED', 'GRN_MISMATCH', 'UNMATCHED_ITEM'
+    bounding_box JSONB,
+    reconciliation_status VARCHAR(32) DEFAULT 'UNMATCHED'
 );
 
 -- Sample Data Seeding
@@ -88,6 +103,12 @@ INSERT INTO vendors (id, name, tax_id, email) VALUES
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Acme Industrial Supplies', 'US-99882211', 'ap@acmeindustrial.com'),
 ('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Apex Electronics Tech', 'US-44331100', 'billing@apexelectronics.com'),
 ('c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'Nexus Logistics & Freight', 'US-77665544', 'invoices@nexuslogistics.com')
+ON CONFLICT DO NOTHING;
+
+-- Approved Vendor Master Banks
+INSERT INTO vendor_approved_banks (id, vendor_id, bank_name, routing_number, account_number, status) VALUES
+('vab-1', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Chase Manhattan Bank', '121000358', 'ACCT-99201100', 'APPROVED'),
+('vab-2', 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Bank of America', '026009593', 'ACCT-44118822', 'APPROVED')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO purchase_orders (id, po_number, vendor_id, status, total_amount, currency, issued_at) VALUES
@@ -100,16 +121,4 @@ INSERT INTO po_items (id, po_id, item_description, quantity, unit_price, total_p
 ('poi-2', 'po-99201-uuid', 'Cat6A Shielded Ethernet Cable 100m', 10.00, 125.00, 1250.00),
 ('poi-3', 'po-88410-uuid', 'Industrial Microcontroller Unit (MCU)', 50.00, 150.00, 7500.00),
 ('poi-4', 'po-88410-uuid', 'Precision Heat Sink Module', 40.00, 30.00, 1200.00)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO goods_received_notes (id, grn_number, po_id, vendor_id, received_at, receiver_name, status) VALUES
-('grn-99201-uuid', 'GRN-99201-A', 'po-99201-uuid', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '2026-08-12', 'Warehouse Supervisor John', 'VERIFIED'),
-('grn-88410-uuid', 'GRN-88410-A', 'po-88410-uuid', 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', '2026-08-15', 'Receiver Sarah M.', 'PARTIAL_DELIVERY')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO grn_items (id, grn_id, po_item_id, received_quantity, accepted_quantity, notes) VALUES
-('grni-1', 'grn-99201-uuid', 'poi-1', 2.00, 2.00, 'Inspected and verified 2 server racks'),
-('grni-2', 'grn-99201-uuid', 'poi-2', 10.00, 10.00, 'Cat6 cables verified'),
-('grni-3', 'grn-88410-uuid', 'poi-3', 35.00, 35.00, 'Partial shipment: 35 units received vs 50 ordered'),
-('grni-4', 'grn-88410-uuid', 'poi-4', 40.00, 40.00, 'Heat sinks received in full')
 ON CONFLICT DO NOTHING;

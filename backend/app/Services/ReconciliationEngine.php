@@ -2,20 +2,38 @@
 
 namespace App\Services;
 
+require_once __DIR__ . '/FraudEngine.php';
+
+use App\Services\FraudEngine;
+
 class ReconciliationEngine
 {
-    protected float $priceTolerancePercent = 1.0; // Allowed 1% variance
+    protected float $priceTolerancePercent = 1.0;
+    protected FraudEngine $fraudEngine;
+
+    public function __construct()
+    {
+        $this->fraudEngine = new FraudEngine();
+    }
 
     /**
      * Run 2-Way Match between Invoice and Purchase Order.
      */
-    public function reconcile($invoice, $po): array
+    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = []): array
     {
         $discrepancies = [];
         $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
 
-        $allMatched = true;
+        // Run Fraud Risk Assessment
+        $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
+        if ($fraudAssessment['is_fraud_flagged']) {
+            foreach ($fraudAssessment['fraud_flags'] as $flag) {
+                $discrepancies[] = "SECURITY ALERT: " . $flag;
+            }
+        }
+
+        $allMatched = !$fraudAssessment['is_fraud_flagged'];
         $updatedItems = [];
 
         foreach ($invoiceItems as $invItem) {
@@ -23,9 +41,7 @@ class ReconciliationEngine
             $invQty = (float)($invItem['quantity'] ?? 0);
             $invPrice = (float)($invItem['unit_price'] ?? 0);
 
-            // Match PO item by description similarity
             $matchedPoItem = $this->findBestMatchingPoItem($itemDesc, $poItems);
-
             if (!$matchedPoItem) {
                 $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
                 $discrepancies[] = "Item '{$itemDesc}' not found on PO {$po['po_number']}.";
@@ -37,7 +53,6 @@ class ReconciliationEngine
             $poQty = (float)($matchedPoItem['quantity'] ?? 0);
             $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
 
-            // 1. Validate Quantity vs PO
             if ($invQty > $poQty) {
                 $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
                 $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
@@ -46,7 +61,6 @@ class ReconciliationEngine
                 continue;
             }
 
-            // 2. Validate Unit Price with Tolerance
             $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
             if ($priceDiffPercent > $this->priceTolerancePercent) {
                 $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
@@ -56,7 +70,6 @@ class ReconciliationEngine
                 continue;
             }
 
-            // Item Passed Check
             $invItem['reconciliation_status'] = 'MATCHED';
             $updatedItems[] = $invItem;
         }
@@ -66,6 +79,7 @@ class ReconciliationEngine
         return [
             'mode' => '2-Way',
             'status' => $finalStatus,
+            'fraud_assessment' => $fraudAssessment,
             'discrepancies' => $discrepancies,
             'items' => $updatedItems,
             'matched_po_id' => $po['id'] ?? null,
@@ -76,14 +90,22 @@ class ReconciliationEngine
     /**
      * Run 3-Way Match between Invoice, Purchase Order, and Goods Received Note (GRN).
      */
-    public function reconcile3Way($invoice, $po, $grn): array
+    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = []): array
     {
         $discrepancies = [];
         $invoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
         $grnItems = is_array($grn['items']) ? $grn['items'] : [];
 
-        $allMatched = true;
+        // Run Fraud Risk Assessment
+        $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
+        if ($fraudAssessment['is_fraud_flagged']) {
+            foreach ($fraudAssessment['fraud_flags'] as $flag) {
+                $discrepancies[] = "SECURITY ALERT: " . $flag;
+            }
+        }
+
+        $allMatched = !$fraudAssessment['is_fraud_flagged'];
         $updatedItems = [];
 
         foreach ($invoiceItems as $invItem) {
@@ -91,7 +113,6 @@ class ReconciliationEngine
             $invQty = (float)($invItem['quantity'] ?? 0);
             $invPrice = (float)($invItem['unit_price'] ?? 0);
 
-            // 1. Match PO Item
             $matchedPoItem = $this->findBestMatchingPoItem($itemDesc, $poItems);
             if (!$matchedPoItem) {
                 $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
@@ -104,11 +125,9 @@ class ReconciliationEngine
             $poQty = (float)($matchedPoItem['quantity'] ?? 0);
             $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
 
-            // 2. Match GRN Item
             $matchedGrnItem = $this->findBestMatchingGrnItem($matchedPoItem['id'] ?? '', $itemDesc, $grnItems);
             $grnAcceptedQty = $matchedGrnItem ? (float)($matchedGrnItem['accepted_quantity'] ?? $matchedGrnItem['received_quantity'] ?? 0) : 0;
 
-            // Check A: Physical Received Quantity vs Invoice Billed Quantity
             if ($invQty > $grnAcceptedQty) {
                 $invItem['reconciliation_status'] = 'GRN_MISMATCH';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
@@ -118,7 +137,6 @@ class ReconciliationEngine
                 continue;
             }
 
-            // Check B: Quantity vs PO
             if ($invQty > $poQty) {
                 $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
@@ -128,7 +146,6 @@ class ReconciliationEngine
                 continue;
             }
 
-            // Check C: Unit Price Variance vs PO
             $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
             if ($priceDiffPercent > $this->priceTolerancePercent) {
                 $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
@@ -139,7 +156,6 @@ class ReconciliationEngine
                 continue;
             }
 
-            // All 3 Checks Passed
             $invItem['reconciliation_status'] = 'MATCHED';
             $invItem['grn_received_qty'] = $grnAcceptedQty;
             $updatedItems[] = $invItem;
@@ -150,6 +166,7 @@ class ReconciliationEngine
         return [
             'mode' => '3-Way',
             'status' => $finalStatus,
+            'fraud_assessment' => $fraudAssessment,
             'discrepancies' => $discrepancies,
             'items' => $updatedItems,
             'matched_po_id' => $po['id'] ?? null,

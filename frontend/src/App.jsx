@@ -16,7 +16,7 @@ import {
   Sparkles,
   Sliders,
   CheckCircle2,
-  PackageCheck
+  ShieldAlert
 } from 'lucide-react';
 
 const MOCK_POS = [
@@ -74,32 +74,17 @@ const MOCK_POS = [
   }
 ];
 
-const MOCK_GRNS = {
-  'po-99201-uuid': {
-    grn_number: 'GRN-99201-A',
-    items: [
-      { po_item_id: 'poi-1', item_description: 'High Performance Server Rack 42U', accepted_quantity: 2.00 },
-      { po_item_id: 'poi-2', item_description: 'Cat6A Shielded Ethernet Cable 100m', accepted_quantity: 10.00 }
-    ]
-  },
-  'po-88410-uuid': {
-    grn_number: 'GRN-88410-A',
-    items: [
-      { po_item_id: 'poi-3', item_description: 'Industrial Microcontroller Unit (MCU)', accepted_quantity: 35.00 }, // Partial receipt!
-      { po_item_id: 'poi-4', item_description: 'Precision Heat Sink Module', accepted_quantity: 40.00 }
-    ]
-  }
-};
-
 const SAMPLE_INVOICES = {
   'INV-2026-001': {
     invoice_number: 'INV-2026-001',
     vendor_name: 'Acme Industrial Supplies',
     vendor_tax_id: 'US-99882211',
+    vendor_bank_account: 'ACCT-99201100',
     invoice_date: '2026-08-15',
     matched_po_id: 'po-99201-uuid',
     status: 'MATCHED',
     total_amount: 4250.00,
+    is_fraud: false,
     items: [
       {
         description: 'High Performance Server Rack 42U',
@@ -120,55 +105,31 @@ const SAMPLE_INVOICES = {
     ],
     raw_elements: [
       { field: 'vendor_name', text: 'Acme Industrial Supplies', confidence: 0.98, box: { x: 64, y: 80, w: 360, h: 50 } },
-      { field: 'tax_id', text: 'Tax ID: US-99882211', confidence: 0.96, box: { x: 64, y: 140, w: 240, h: 30 } },
       { field: 'invoice_number', text: 'INVOICE #: INV-2026-001', confidence: 0.99, box: { x: 480, y: 80, w: 256, h: 50 } },
       { field: 'line_item_1', text: 'High Performance Server Rack 42U - Qty: 2 @ $1,500.00', confidence: 0.95, box: { x: 64, y: 380, w: 672, h: 60 } },
       { field: 'line_item_2', text: 'Cat6A Shielded Ethernet Cable 100m - Qty: 10 @ $125.00', confidence: 0.94, box: { x: 64, y: 460, w: 672, h: 60 } },
       { field: 'total_amount', text: 'TOTAL AMOUNT: $4,250.00', confidence: 0.99, box: { x: 440, y: 720, w: 296, h: 60 } }
     ]
   },
-  'INV-2026-002': {
-    invoice_number: 'INV-2026-002',
-    vendor_name: 'Apex Electronics Tech',
-    vendor_tax_id: 'US-44331100',
-    invoice_date: '2026-08-18',
-    matched_po_id: 'po-88410-uuid',
-    status: 'DISCREPANCY',
-    total_amount: 8700.00,
-    items: [
-      {
-        description: 'Industrial Microcontroller Unit (MCU)',
-        quantity: 50.00, // Billed 50, but GRN physical receipt shows only 35 arrived!
-        unit_price: 150.00,
-        total_price: 7500.00,
-        reconciliation_status: 'GRN_MISMATCH',
-        grn_received_qty: 35.00
-      },
-      {
-        description: 'Precision Heat Sink Module',
-        quantity: 40.00,
-        unit_price: 30.00,
-        total_price: 1200.00,
-        reconciliation_status: 'MATCHED',
-        grn_received_qty: 40.00
-      }
-    ],
-    raw_elements: [
-      { field: 'vendor_name', text: 'Apex Electronics Tech', confidence: 0.97, box: { x: 64, y: 80, w: 360, h: 50 } },
-      { field: 'invoice_number', text: 'INVOICE #: INV-2026-002', confidence: 0.99, box: { x: 480, y: 80, w: 256, h: 50 } },
-      { field: 'line_item_1', text: 'Industrial Microcontroller Unit (MCU) - Qty: 50 @ $150.00', confidence: 0.94, box: { x: 64, y: 380, w: 672, h: 60 } },
-      { field: 'line_item_2', text: 'Precision Heat Sink Module - Qty: 40 @ $30.00', confidence: 0.96, box: { x: 64, y: 460, w: 672, h: 60 } },
-      { field: 'total_amount', text: 'TOTAL AMOUNT: $8,700.00', confidence: 0.98, box: { x: 440, y: 720, w: 296, h: 60 } }
-    ]
-  },
-  'INV-2026-003': {
-    invoice_number: 'INV-2026-003',
+  'INV-2026-999': {
+    invoice_number: 'INV-2026-999',
     vendor_name: 'Acme Industrial Supplies',
     vendor_tax_id: 'US-99882211',
-    invoice_date: '2026-08-20',
+    vendor_bank_account: 'SUSPICIOUS-FRAUD-BANK-99999', // Altered bank!
+    invoice_date: '2026-08-25',
     matched_po_id: 'po-99201-uuid',
     status: 'DISCREPANCY',
-    total_amount: 4875.00,
+    total_amount: 4250.00,
+    is_fraud: true,
+    fraud_assessment: {
+      fraud_risk_score: 85.0,
+      fraud_risk_level: 'CRITICAL',
+      is_fraud_flagged: true,
+      bank_verification: 'ALTERED_BANK_ALERT',
+      fraud_flags: [
+        "UNAPPROVED_BANK_ACCOUNT: Remittance account 'SUSPICIOUS-FRAUD-BANK-99999' does not match approved master records for Acme Industrial Supplies."
+      ]
+    },
     items: [
       {
         description: 'High Performance Server Rack 42U',
@@ -180,19 +141,17 @@ const SAMPLE_INVOICES = {
       },
       {
         description: 'Cat6A Shielded Ethernet Cable 100m',
-        quantity: 15.00, // 15 vs 10 PO -> Qty Exceeded
+        quantity: 10.00,
         unit_price: 125.00,
-        total_price: 1875.00,
-        reconciliation_status: 'QTY_EXCEEDED',
+        total_price: 1250.00,
+        reconciliation_status: 'MATCHED',
         grn_received_qty: 10.00
       }
     ],
     raw_elements: [
       { field: 'vendor_name', text: 'Acme Industrial Supplies', confidence: 0.98, box: { x: 64, y: 80, w: 360, h: 50 } },
-      { field: 'invoice_number', text: 'INVOICE #: INV-2026-003', confidence: 0.99, box: { x: 480, y: 80, w: 256, h: 50 } },
-      { field: 'line_item_1', text: 'High Performance Server Rack 42U - Qty: 2 @ $1,500.00', confidence: 0.95, box: { x: 64, y: 380, w: 672, h: 60 } },
-      { field: 'line_item_2', text: 'Cat6A Shielded Ethernet Cable 100m - Qty: 15 @ $125.00', confidence: 0.92, box: { x: 64, y: 460, w: 672, h: 60 } },
-      { field: 'total_amount', text: 'TOTAL AMOUNT: $4,875.00', confidence: 0.99, box: { x: 440, y: 720, w: 296, h: 60 } }
+      { field: 'invoice_number', text: 'INVOICE #: INV-2026-999', confidence: 0.99, box: { x: 480, y: 80, w: 256, h: 50 } },
+      { field: 'total_amount', text: 'TOTAL AMOUNT: $4,250.00', confidence: 0.99, box: { x: 440, y: 720, w: 296, h: 60 } }
     ]
   }
 };
@@ -214,10 +173,9 @@ export default function App() {
 
   const runReconciliationService = async (poId, mode = '3way') => {
     const targetPo = MOCK_POS.find(p => p.id === poId || p.po_number === poId) || MOCK_POS[0];
-    const endpoint = mode === '3way' ? 'http://127.0.0.1:8000/api/reconcile-3way' : 'http://127.0.0.1:8000/api/reconcile';
     
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch('http://127.0.0.1:8000/api/reconcile-3way', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -233,58 +191,15 @@ export default function App() {
           setInvoiceData({
             ...invoiceData,
             status: json.reconciliation.status,
+            fraud_assessment: json.reconciliation.fraud_assessment,
             items: json.reconciliation.items
           });
           return;
         }
       }
     } catch (err) {
-      console.log("Local API server offline, running fallback ReconciliationEngine in memory.");
+      console.log("Local API server offline.");
     }
-
-    // Local client-side fallback matching logic
-    const tolerance = 1.0;
-    let allMatched = true;
-    const targetGrn = MOCK_GRNS[targetPo.id];
-
-    const updatedItems = (invoiceData.items || []).map(invItem => {
-      const matchedPoItem = targetPo.items.find(p => p.item_description.toLowerCase().includes(invItem.description.toLowerCase().substring(0, 8)));
-      if (!matchedPoItem) {
-        allMatched = false;
-        return { ...invItem, reconciliation_status: 'UNMATCHED_ITEM' };
-      }
-
-      const grnItem = targetGrn?.items.find(g => g.item_description.toLowerCase().includes(invItem.description.toLowerCase().substring(0, 8)));
-      const grnAcceptedQty = grnItem ? grnItem.accepted_quantity : matchedPoItem.quantity;
-
-      if (mode === '3way' && invItem.quantity > grnAcceptedQty) {
-        allMatched = false;
-        return { 
-          ...invItem, 
-          reconciliation_status: 'GRN_MISMATCH',
-          grn_received_qty: grnAcceptedQty
-        };
-      }
-
-      if (invItem.quantity > matchedPoItem.quantity) {
-        allMatched = false;
-        return { ...invItem, reconciliation_status: 'QTY_EXCEEDED', grn_received_qty: grnAcceptedQty };
-      }
-
-      const priceDiff = Math.abs((invItem.unit_price - matchedPoItem.unit_price) / matchedPoItem.unit_price) * 100;
-      if (priceDiff > tolerance) {
-        allMatched = false;
-        return { ...invItem, reconciliation_status: 'PRICE_MISMATCH', grn_received_qty: grnAcceptedQty };
-      }
-
-      return { ...invItem, reconciliation_status: 'MATCHED', grn_received_qty: grnAcceptedQty };
-    });
-
-    setInvoiceData({
-      ...invoiceData,
-      status: allMatched ? 'MATCHED' : 'DISCREPANCY',
-      items: updatedItems
-    });
   };
 
   const handleSyncErp = async (inv) => {
@@ -312,17 +227,18 @@ export default function App() {
           
           {/* Logo & Brand Identity */}
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-500 to-sky-400 flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-rose-600 via-purple-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
               <Zap className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-heading font-extrabold text-lg text-slate-100 tracking-tight">FinancePulse</span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
-                  3-Way GRN Engine Enabled
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  SHA-256 Fraud Shield
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-mono">AI Invoice OCR & 3-Way PO/GRN Physical Reconciliation</p>
+              <p className="text-[11px] text-slate-400 font-mono">AI Invoice OCR • 3-Way Matching • Bank Remittance Fraud Shield</p>
             </div>
           </div>
 
@@ -404,29 +320,19 @@ export default function App() {
                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              INV-2026-001 (100% Match)
+              INV-2026-001 (100% Verified)
             </button>
 
             <button
-              onClick={() => handleSelectSampleInvoice('INV-2026-002')}
+              onClick={() => handleSelectSampleInvoice('INV-2026-999')}
               className={`px-3 py-1 rounded-md font-mono text-xs border transition ${
-                currentInvoiceKey === 'INV-2026-002'
-                  ? 'bg-purple-950 border-purple-500 text-purple-300 font-bold'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                currentInvoiceKey === 'INV-2026-999'
+                  ? 'bg-rose-950 border-rose-500 text-rose-300 font-bold flex items-center gap-1'
+                  : 'bg-slate-950 border-slate-800 text-rose-400 hover:text-rose-200 flex items-center gap-1'
               }`}
             >
-              INV-2026-002 (3-Way GRN Short-Shipment)
-            </button>
-
-            <button
-              onClick={() => handleSelectSampleInvoice('INV-2026-003')}
-              className={`px-3 py-1 rounded-md font-mono text-xs border transition ${
-                currentInvoiceKey === 'INV-2026-003'
-                  ? 'bg-amber-950 border-amber-500 text-amber-300 font-bold'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              INV-2026-003 (Qty Exceeded)
+              <ShieldAlert className="w-3.5 h-3.5" />
+              INV-2026-999 (Bank Remittance Fraud Alert!)
             </button>
           </div>
         </div>
@@ -443,7 +349,7 @@ export default function App() {
             setInvoiceData={setInvoiceData}
             onRunReconcile={runReconciliationService}
             onSyncErp={handleSyncErp}
-            onUploadNewInvoice={() => handleSelectSampleInvoice('INV-2026-002')}
+            onUploadNewInvoice={() => handleSelectSampleInvoice('INV-2026-999')}
           />
         )}
 
@@ -468,7 +374,7 @@ export default function App() {
       </main>
 
       <footer className="bg-slate-950 border-t border-slate-900 py-4 text-center text-xs text-slate-500 font-mono">
-        FinancePulse • AI Invoice OCR & 3-Way GRN Reconciliation Engine • Multi-Tenant Architecture
+        FinancePulse • AI Invoice OCR & Fraud Prevention Engine • Multi-Tenant Architecture
       </footer>
     </div>
   );
