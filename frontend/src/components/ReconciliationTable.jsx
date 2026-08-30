@@ -1,8 +1,10 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target, BrainCircuit, Truck, DollarSign, Percent } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, HelpCircle, Edit3, ArrowRight, PackageCheck, AlertOctagon, Target, BrainCircuit, Truck, DollarSign, Percent, Globe } from 'lucide-react';
 
-export default function ReconciliationTable({ invoiceItems, poItems, matchMode, onUpdateItem, onLearnAlias, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
+export default function ReconciliationTable({ invoiceItems, poItems, matchMode, currency = 'USD', exchangeRate = 1.0000, onUpdateItem, onLearnAlias, activeHoverItem, setActiveHoverItem, selectedFocusItem, setSelectedFocusItem }) {
   
+  const currSymbol = currency === 'EUR' ? '€' : (currency === 'GBP' ? '£' : (currency === 'JPY' ? '¥' : '$'));
+
   const getStatusBadge = (status, isLearned) => {
     if (isLearned || status === 'LEARNED_ALIAS_MATCH') {
       return (
@@ -62,10 +64,17 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
             {invoiceItems.length} Items Parsed
           </span>
         </h4>
-        <span className="text-xs text-amber-400 font-mono flex items-center gap-1">
-          <Truck className="w-3.5 h-3.5" />
-          Proportional Landed Inventory Costing Active
-        </span>
+        {currency !== 'USD' ? (
+          <span className="text-xs text-emerald-400 font-mono flex items-center gap-1">
+            <Globe className="w-3.5 h-3.5" />
+            Multi-Currency Forex Conversion: 1 {currency} = {exchangeRate} USD
+          </span>
+        ) : (
+          <span className="text-xs text-amber-400 font-mono flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5" />
+            Proportional Landed Inventory Costing Active
+          </span>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -78,9 +87,9 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
               {matchMode === '3way' && (
                 <th className="py-3 px-3 font-medium text-center text-purple-300">GRN Rec. Qty</th>
               )}
-              <th className="py-3 px-3 font-medium text-right">Billed Price</th>
-              <th className="py-3 px-3 font-medium text-right text-amber-300">Landed Unit Cost</th>
-              <th className="py-3 px-3 font-medium text-right">PO Price</th>
+              <th className="py-3 px-3 font-medium text-right">Billed Price ({currency})</th>
+              <th className="py-3 px-3 font-medium text-right text-amber-300">Landed Cost (USD)</th>
+              <th className="py-3 px-3 font-medium text-right">PO Price (USD)</th>
               <th className="py-3 px-4 font-medium text-center">Reconciliation Status</th>
               <th className="py-3 px-3 font-medium text-center">Actions</th>
             </tr>
@@ -92,10 +101,7 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
               const isFocused = selectedFocusItem === fieldKey;
               const matchedPo = poItems.find(p => p.item_description?.toLowerCase().includes(item.description?.toLowerCase().substring(0, 8)));
 
-              const landedUnitCost = item.landed_unit_cost !== undefined 
-                ? item.landed_unit_cost 
-                : item.unit_price;
-
+              const landedUnitCostUsd = (item.landed_unit_cost !== undefined ? item.landed_unit_cost : item.unit_price) * exchangeRate;
               const allocFreight = item.allocated_freight || 0;
               const allocTax = item.allocated_tax || 0;
 
@@ -150,10 +156,10 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
                     </td>
                   )}
 
-                  {/* Unit Price Billed */}
+                  {/* Unit Price Billed in Foreign Currency */}
                   <td className="py-3 px-3 text-right">
                     <div className="inline-flex items-center gap-1">
-                      <span className="text-slate-500">$</span>
+                      <span className="text-slate-500">{currSymbol}</span>
                       <input
                         type="number"
                         step="0.01"
@@ -168,19 +174,19 @@ export default function ReconciliationTable({ invoiceItems, poItems, matchMode, 
                     </div>
                   </td>
 
-                  {/* Landed Unit Cost (Base Price + Allocated Freight & Tax) */}
+                  {/* Landed Unit Cost in USD Equivalent */}
                   <td className="py-3 px-3 text-right bg-amber-950/10 font-mono font-bold text-amber-300">
-                    <div title={`Allocated Freight: +$${allocFreight.toFixed(2)} | Allocated Tax: +$${allocTax.toFixed(2)}`}>
-                      ${landedUnitCost.toFixed(2)}
-                      {(allocFreight > 0 || allocTax > 0) && (
+                    <div title={`Converted to USD @ ${exchangeRate} | Allocated Freight: +$${allocFreight.toFixed(2)} | Allocated Tax: +$${allocTax.toFixed(2)}`}>
+                      ${landedUnitCostUsd.toFixed(2)}
+                      {(allocFreight > 0 || allocTax > 0 || currency !== 'USD') && (
                         <div className="text-[10px] text-amber-400/80 font-normal">
-                          (+${(allocFreight + allocTax).toFixed(2)})
+                          {currency !== 'USD' ? `(${currSymbol}${item.unit_price})` : `(+$${(allocFreight + allocTax).toFixed(2)})`}
                         </div>
                       )}
                     </div>
                   </td>
 
-                  {/* PO Unit Price */}
+                  {/* PO Unit Price (USD) */}
                   <td className="py-3 px-3 text-right font-mono text-slate-400">
                     {matchedPo ? `$${matchedPo.unit_price.toFixed(2)}` : '-'}
                   </td>

@@ -1,42 +1,65 @@
 <?php
 
 require_once __DIR__ . '/app/Services/ReconciliationEngine.php';
-require_once __DIR__ . '/app/Services/FraudEngine.php';
+require_once __DIR__ . '/app/Services/CurrencyConverter.php';
 
 use App\Services\ReconciliationEngine;
+use App\Services\CurrencyConverter;
 
-echo "=== FinancePulse Reconciliation, Vendor Memory & Freight/Tax Splitter Test Suite ===\n\n";
+echo "=== FinancePulse Reconciliation & Multi-Currency Forex Test Suite ===\n\n";
 
 $reconcileEngine = new ReconciliationEngine();
+$converter = new CurrencyConverter();
 
-$items = [
-    [
-        'description' => 'High Performance Server Rack 42U',
-        'quantity' => 2.00,
-        'unit_price' => 1500.00,
-        'total_price' => 3000.00
-    ],
-    [
-        'description' => 'Cat6A Shielded Ethernet Cable 100m',
-        'quantity' => 10.00,
-        'unit_price' => 125.00,
-        'total_price' => 1250.00
+$po = [
+    'id' => 'po-99201-uuid',
+    'po_number' => 'PO-99201',
+    'items' => [
+        [
+            'id' => 'poi-1',
+            'item_description' => 'High Performance Server Rack 42U',
+            'quantity' => 2.00,
+            'unit_price' => 1500.00, // $1500 USD
+            'total_price' => 3000.00
+        ]
     ]
 ];
 
-$freightAmount = 150.00;
-$taxAmount = 240.00;
+$grn = [
+    'id' => 'grn-99201-uuid',
+    'grn_number' => 'GRN-99201-A',
+    'items' => [
+        [
+            'po_item_id' => 'poi-1',
+            'accepted_quantity' => 2.00
+        ]
+    ]
+];
 
-echo "Test 1: Testing Proportional Header Fee Allocation (Freight \$150, Tax \$240)...\n";
-$allocatedItems = $reconcileEngine->allocateHeaderFees($items, $freightAmount, $taxAmount);
+// Foreign Invoice in EUR (€1382.49 EUR @ 1.0850 = $1500 USD)
+$invoiceEur = [
+    'invoice_number' => 'INV-2026-EUR',
+    'vendor_name' => 'Acme Industrial Supplies',
+    'total_amount' => 2764.98,
+    'items' => [
+        [
+            'description' => 'High Performance Server Rack 42U',
+            'quantity' => 2.00,
+            'unit_price' => 1382.49, // €1382.49 EUR
+            'total_price' => 2764.98
+        ]
+    ]
+];
 
-foreach ($allocatedItems as $idx => $it) {
-    echo "Item " . ($idx + 1) . ": " . $it['description'] . "\n";
-    echo "  Weight Ratio: " . $it['weight_ratio'] . "%\n";
-    echo "  Allocated Freight: \$" . $it['allocated_freight'] . "\n";
-    echo "  Allocated Tax: \$" . $it['allocated_tax'] . "\n";
-    echo "  Base Unit Price: \$" . $it['unit_price'] . "\n";
-    echo "  Landed Unit Cost: \$" . $it['landed_unit_cost'] . "\n\n";
-}
+echo "Test 1: Running 3-Way Match on EUR (€) Invoice converted to USD at 1.0850...\n";
+$res = $reconcileEngine->reconcile3Way($invoiceEur, $po, $grn, [], [], [], 0, 0, 'EUR', 1.0850);
+
+echo "Final Status: " . $res['status'] . "\n";
+echo "Invoice Currency: " . $res['currency'] . "\n";
+echo "Exchange Rate: 1 EUR = " . $res['exchange_rate'] . " USD\n";
+echo "Billed Unit Price (EUR): €" . $res['items'][0]['unit_price'] . "\n";
+echo "Converted USD Price: \$" . $res['items'][0]['unit_price_usd'] . " USD\n";
+echo "PO Target Unit Price: \$" . $po['items'][0]['unit_price'] . " USD\n";
+echo "Item Status: " . $res['items'][0]['reconciliation_status'] . "\n\n";
 
 echo "=== Test Suite Complete ===\n";

@@ -3,17 +3,21 @@
 namespace App\Services;
 
 require_once __DIR__ . '/FraudEngine.php';
+require_once __DIR__ . '/CurrencyConverter.php';
 
 use App\Services\FraudEngine;
+use App\Services\CurrencyConverter;
 
 class ReconciliationEngine
 {
     protected float $priceTolerancePercent = 1.0;
     protected FraudEngine $fraudEngine;
+    protected CurrencyConverter $currencyConverter;
 
     public function __construct()
     {
         $this->fraudEngine = new FraudEngine();
+        $this->currencyConverter = new CurrencyConverter();
     }
 
     /**
@@ -48,90 +52,20 @@ class ReconciliationEngine
     }
 
     /**
-     * Run 2-Way Match between Invoice and Purchase Order.
+     * Run 3-Way Match with Multi-Currency Forex Conversion.
      */
-    public function reconcile($invoice, $po, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = [], float $freightAmount = 0.0, float $taxAmount = 0.0): array
-    {
-        $discrepancies = [];
-        $rawInvoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
-        $poItems = is_array($po['items']) ? $po['items'] : [];
-
-        $invoiceItems = $this->allocateHeaderFees($rawInvoiceItems, $freightAmount, $taxAmount);
-
-        $fraudAssessment = $this->fraudEngine->assessFraudRisk($invoice, $existingInvoices, $approvedBanks);
-        if ($fraudAssessment['is_fraud_flagged']) {
-            foreach ($fraudAssessment['fraud_flags'] as $flag) {
-                $discrepancies[] = "SECURITY ALERT: " . $flag;
-            }
-        }
-
-        $allMatched = !$fraudAssessment['is_fraud_flagged'];
-        $updatedItems = [];
-
-        foreach ($invoiceItems as $invItem) {
-            $itemDesc = $invItem['description'] ?? '';
-            $invQty = (float)($invItem['quantity'] ?? 0);
-            $invPrice = (float)($invItem['unit_price'] ?? 0);
-
-            $matchResult = $this->findBestMatchingPoItem($itemDesc, $poItems, $vendorAliases);
-            $matchedPoItem = $matchResult['po_item'] ?? null;
-            $isLearnedAlias = $matchResult['is_learned_alias'] ?? false;
-
-            if (!$matchedPoItem) {
-                $invItem['reconciliation_status'] = 'UNMATCHED_ITEM';
-                $discrepancies[] = "Item '{$itemDesc}' not found on PO {$po['po_number']}.";
-                $allMatched = false;
-                $updatedItems[] = $invItem;
-                continue;
-            }
-
-            $poQty = (float)($matchedPoItem['quantity'] ?? 0);
-            $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
-
-            if ($invQty > $poQty) {
-                $invItem['reconciliation_status'] = 'QTY_EXCEEDED';
-                $invItem['is_learned_alias'] = $isLearnedAlias;
-                $discrepancies[] = "Item '{$itemDesc}' exceeds PO quantity ({$invQty} vs {$poQty}).";
-                $allMatched = false;
-                $updatedItems[] = $invItem;
-                continue;
-            }
-
-            $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
-            if ($priceDiffPercent > $this->priceTolerancePercent) {
-                $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
-                $invItem['is_learned_alias'] = $isLearnedAlias;
-                $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPrice} vs \${$poPrice}, " . round($priceDiffPercent, 1) . "% diff).";
-                $allMatched = false;
-                $updatedItems[] = $invItem;
-                continue;
-            }
-
-            $invItem['reconciliation_status'] = $isLearnedAlias ? 'LEARNED_ALIAS_MATCH' : 'MATCHED';
-            $invItem['is_learned_alias'] = $isLearnedAlias;
-            $updatedItems[] = $invItem;
-        }
-
-        $finalStatus = (count($invoiceItems) > 0 && $allMatched) ? 'MATCHED' : 'DISCREPANCY';
-
-        return [
-            'mode' => '2-Way',
-            'status' => $finalStatus,
-            'freight_amount' => $freightAmount,
-            'tax_amount' => $taxAmount,
-            'fraud_assessment' => $fraudAssessment,
-            'discrepancies' => $discrepancies,
-            'items' => $updatedItems,
-            'matched_po_id' => $po['id'] ?? null,
-            'po_number' => $po['po_number'] ?? null
-        ];
-    }
-
-    /**
-     * Run 3-Way Match between Invoice, Purchase Order, and Goods Received Note (GRN).
-     */
-    public function reconcile3Way($invoice, $po, $grn, array $existingInvoices = [], array $approvedBanks = [], array $vendorAliases = [], float $freightAmount = 0.0, float $taxAmount = 0.0): array
-    {
+    public function reconcile3Way(
+        $invoice, 
+        $po, 
+        $grn, 
+        array $existingInvoices = [], 
+        array $approvedBanks = [], 
+        array $vendorAliases = [], 
+        float $freightAmount = 0.0, 
+        float $taxAmount = 0.0,
+        string $invoiceCurrency = 'USD',
+        float $exchangeRate = 1.0000
+    ): array {
         $discrepancies = [];
         $rawInvoiceItems = is_array($invoice['items']) ? $invoice['items'] : [];
         $poItems = is_array($po['items']) ? $po['items'] : [];
@@ -152,7 +86,13 @@ class ReconciliationEngine
         foreach ($invoiceItems as $invItem) {
             $itemDesc = $invItem['description'] ?? '';
             $invQty = (float)($invItem['quantity'] ?? 0);
-            $invPrice = (float)($invItem['unit_price'] ?? 0);
+            $invRawPrice = (float)($invItem['unit_price'] ?? 0);
+
+            // Forex conversion if non-USD currency
+            $invPriceUsd = $this->currencyConverter->convertToBaseCurrency($invRawPrice, $invoiceCurrency, $exchangeRate);
+            $invItem['unit_price_usd'] = $invPriceUsd;
+            $invItem['currency'] = $invoiceCurrency;
+            $invItem['exchange_rate'] = $exchangeRate;
 
             $matchResult = $this->findBestMatchingPoItem($itemDesc, $poItems, $vendorAliases);
             $matchedPoItem = $matchResult['po_item'] ?? null;
@@ -167,7 +107,7 @@ class ReconciliationEngine
             }
 
             $poQty = (float)($matchedPoItem['quantity'] ?? 0);
-            $poPrice = (float)($matchedPoItem['unit_price'] ?? 0);
+            $poPriceUsd = (float)($matchedPoItem['unit_price'] ?? 0);
 
             $matchedGrnItem = $this->findBestMatchingGrnItem($matchedPoItem['id'] ?? '', $itemDesc, $grnItems);
             $grnAcceptedQty = $matchedGrnItem ? (float)($matchedGrnItem['accepted_quantity'] ?? $matchedGrnItem['received_quantity'] ?? 0) : 0;
@@ -192,12 +132,12 @@ class ReconciliationEngine
                 continue;
             }
 
-            $priceDiffPercent = $poPrice > 0 ? abs(($invPrice - $poPrice) / $poPrice) * 100 : 0;
+            $priceDiffPercent = $poPriceUsd > 0 ? abs(($invPriceUsd - $poPriceUsd) / $poPriceUsd) * 100 : 0;
             if ($priceDiffPercent > $this->priceTolerancePercent) {
                 $invItem['reconciliation_status'] = 'PRICE_MISMATCH';
                 $invItem['grn_received_qty'] = $grnAcceptedQty;
                 $invItem['is_learned_alias'] = $isLearnedAlias;
-                $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPrice} vs \${$poPrice}, " . round($priceDiffPercent, 1) . "% diff).";
+                $discrepancies[] = "Item '{$itemDesc}' price variance exceeds limit (\${$invPriceUsd} USD vs \${$poPriceUsd} USD PO, " . round($priceDiffPercent, 1) . "% diff).";
                 $allMatched = false;
                 $updatedItems[] = $invItem;
                 continue;
@@ -214,6 +154,8 @@ class ReconciliationEngine
         return [
             'mode' => '3-Way',
             'status' => $finalStatus,
+            'currency' => $invoiceCurrency,
+            'exchange_rate' => $exchangeRate,
             'freight_amount' => $freightAmount,
             'tax_amount' => $taxAmount,
             'fraud_assessment' => $fraudAssessment,

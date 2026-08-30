@@ -1,202 +1,112 @@
-# FinancePulse
+# FinancePulse | Automated Financial Intelligence & Multi-Currency 3-Way Reconciliation Platform
 
-> **Automated Financial Intelligence, AI Invoice OCR & Real-Time 2-Way Reconciliation Engine**
+FinancePulse is an enterprise-grade financial intelligence platform that automates Accounts Payable (AP) invoice processing, OCR document extraction, 3-way matching (Invoice + Purchase Order + Goods Received Note), fraud risk assessment, vendor self-learning memory, landed inventory costing, multi-currency Forex conversions, and ERP synchronization (QuickBooks & Xero).
 
-FinancePulse automates document intake, field extraction, 2-way Purchase Order (PO) matching, and ERP ledger sync to eliminate manual bookkeeping for accounts payable (AP) departments and corporate accounting teams.
-
----
-
-## 🚀 Product Overview & Value Proposition
-
-- **Automated Document Extraction**: Parses scanned vendor invoices, tax totals, and itemized tabular line items using computer vision and OCR.
-- **2-Way Discrepancy Matching**: Cross-references invoice line items against internal purchase orders in real time, detecting price variances and quantity overages based on tolerance thresholds.
-- **Side-by-Side Review Workspace**: Displays interactive SVG bounding-box overlays atop original document previews alongside editable extracted fields.
-- **Multi-Tenant Accounting API**: Multi-tenant database isolation to securely manage client ledgers and push reconciled data to accounting platforms (e.g., QuickBooks Online, Xero).
+![FinancePulse Platform Overview](file:///C:/Users/Sadeep/.gemini/antigravity-ide/brain/7f38397b-5029-494c-b9f5-4128384bbe00/reconciliation_results_eur_1788067042630.png)
 
 ---
 
-## ⚙️ Tech Stack Breakdown
+## 🌟 Key Platform Features
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **OCR & Layout Extraction** | Python 3.11+ / FastAPI / PaddleOCR | Extracts invoice metadata, table geometries, and pixel bounding boxes. |
-| **Backend & Multi-Tenancy** | PHP 8.2+ / Laravel 12 Architecture | Manages multi-tenant ledgers, REST APIs, business logic, and reconciliation rules. |
-| **Primary Database** | PostgreSQL 16 / SQLite | Stores tenant PO records, invoice line items, bounding box JSONB data, and audit logs. |
-| **Reconciliation Engine** | PHP `ReconciliationEngine.php` | Executes fuzzy description matching, 1.0% price variance checks, and quantity checks. |
-| **Frontend Workspace** | React 18 (Vite) + Tailwind CSS | Split-screen verification workspace with interactive SVG bounding boxes. |
+1. **OCR Document Intake & SVG Bounding Box Canvas**: Interactive document viewer built with dynamic SVG bounding box overlays, smooth auto-scroll Y/X math, and animated focus rings.
+2. **3-Way Matching Engine (Invoice + PO + GRN)**: Validates invoice line items against purchase orders and warehouse physical receipts (`goods_received_notes` & `grn_items`), flagging short-shipment quantities (`GRN SHORT-SHIPMENT`).
+3. **Duplicate Hash & Fraud Risk Shield**: Computes SHA-256 document cryptographic hashes to detect duplicate submissions and verifies remittance bank accounts against approved master records (`vendor_approved_banks`).
+4. **Interactive Bounding Box "Click-to-Zoom" Canvas Synchronization**: Clicking line items in the reconciliation table auto-pans and zooms the document canvas directly onto the targeted bounding box coordinates.
+5. **Vendor Self-Learning Alias Engine (`vendor_item_aliases`)**: Remembers manual AP item corrections to automatically match future invoice line item abbreviations with 100% precision (`LEARNED ALIAS MATCH`).
+6. **Line-Item Tax & Freight Allocation Splitter**: Proportionally distributes lump-sum shipping ($) and sales tax ($) fees across line items to compute exact **Landed Unit Costs** for ERP inventory accounting.
+7. **Multi-Currency Forex Conversion Engine**: Real-time multi-currency conversions (EUR €, GBP £, JPY ¥, CAD CA$, AUD A$) converting foreign invoice amounts to base ledger currency (USD $) at spot exchange rates.
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## 🛠️ Architecture & Microservices
 
-```text
-   [ Client Browser: React 18 SPA ]
-   (Side-by-Side Review & Bounding Boxes)
-                    │
-            (HTTPS / REST API)
-                    ▼
-   ┌───────────────────────────────────┐
-   │ Laravel / PHP API Service         │
-   │  - Tenant Isolation & RBAC        │
-   │  - PO Database & Approval State   │
-   └──────────────┬────────────────────┘
-                  │
-        ┌─────────┴────────────────────────┐
-        ▼                                  ▼
-┌───────────────────────────┐   ┌───────────────────────────┐
-│ Private Object Storage    │   │ Async Job Queue           │
-│ - Raw Invoices (PDF/JPG)  │   │ - `ProcessInvoice`        │
-└─────────────┬─────────────┘   └──────────┬────────────────┘
-              │                            │
-              └──────────────┬─────────────┘
-                             ▼
-              ┌─────────────────────────────┐
-              │ Python FastAPI OCR Service  │
-              │ - PaddleOCR / LayoutLMv3    │
-              │ - Table & Field Extraction  │
-              │ - Bounding Box Normalizer   │
-              └──────────────┬──────────────┘
-                             │
-                             ▼ (Webhook / HTTP Callback)
-   ┌───────────────────────────────────┐
-   │ Laravel 2-Way Match Engine        │
-   │  - Fuzzy Vendor & Description     │
-   │  - Line-Item Qty & Price Check    │
-   │  - Discrepancy Status Generator   │
-   └──────────────┬────────────────────┘
-                  │
-        ┌─────────┴────────────────────────┐
-        ▼                                  ▼
-┌───────────────────────────┐   ┌───────────────────────────┐
-│ PostgreSQL Tenant DB      │   │ Accounting ERP Sync       │
-│ - Normalized Invoices     │   │ - QuickBooks / Xero API   │
-│ - Reconciliation Audit    │   │ - CSV Export Engine       │
-└───────────────────────────┘   └───────────────────────────┘
+```
+                        ┌─────────────────────────────────────────┐
+                        │      React 18 + Vite SPA Frontend       │
+                        │        (http://localhost:5173/)         │
+                        └────────────────────┬────────────────────┘
+                                             │
+                       ┌─────────────────────┴─────────────────────┐
+                       │                                           │
+                       ▼                                           ▼
+       ┌───────────────────────────────┐           ┌───────────────────────────────┐
+       │     FastAPI OCR Microservice  │           │      PHP REST API & Portal    │
+       │    (http://127.0.0.1:8001/)    │           │    (http://127.0.0.1:8000/)    │
+       └───────────────┬───────────────┘           └───────────────┬───────────────┘
+                       │                                           │
+                       ▼                                           ▼
+       ┌───────────────────────────────┐           ┌───────────────────────────────┐
+       │     PaddleOCR Vision Model    │           │   PostgreSQL / SQLite Schema  │
+       │    Normalized Geometry BBoxes │           │ (3-Way, Fraud & Vendor Memory)│
+       └───────────────────────────────┘           └───────────────────────────────┘
 ```
 
----
-
-## 📁 Repository Structure
-
-```text
-Finance Pulse/
-├── backend/
-│   ├── app/
-│   │   └── Services/
-│   │       └── ReconciliationEngine.php  # Core 2-Way Match Algorithm
-│   ├── server.php                         # REST API Server Endpoint
-│   └── test_reconcile.php                 # PHP Unit Test Suite
-├── database/
-│   └── init_schema.sql                    # PostgreSQL Database Schema & Seeds
-├── frontend/
-│   ├── index.html                         # SPA Entry HTML & Google Fonts
-│   ├── package.json                       # React 18 & Vite Dependencies
-│   ├── vite.config.js                     # Vite Configuration
-│   └── src/
-│       ├── App.jsx                        # Main Application Shell & Navigation
-│       ├── index.css                      # Glassmorphic Design System & Bbox CSS
-│       └── components/
-│           ├── SplitViewWorkspace.jsx     # Side-by-Side Verification Controller
-│           ├── DocumentViewer.jsx         # Interactive SVG Bounding Box Canvas
-│           ├── ReconciliationTable.jsx    # Itemized Match Grid & Editing
-│           ├── DashboardOverview.jsx      # AP Intelligence & Metrics
-│           ├── PORegistryView.jsx         # Purchase Order Registry
-│           └── ERPAuditLog.jsx            # QuickBooks / Xero Sync Logs
-├── ocr_service/
-│   ├── main.py                            # FastAPI OCR Microservice
-│   └── requirements.txt                   # Python Dependencies
-└── README.md                              # Technical Documentation
-```
+### Components:
+- **Frontend SPA**: React 18, Vite, Tailwind CSS, Lucide Icons (`frontend/`).
+- **Backend API**: PHP 8.x server with REST endpoints, 3-Way Match service, Fraud Engine, Currency Converter, and Admin Portal (`backend/`).
+- **OCR Microservice**: Python FastAPI service with PaddleOCR and heuristic vision fallback (`ocr_service/`).
+- **Database**: Full DDL schema with 3-Way GRN tables, approved master banks, and vendor self-learning memory (`database/init_schema.sql`).
 
 ---
 
-## 🗄️ Database Schema (`database/init_schema.sql`)
+## 🚀 Getting Started
 
-- **`vendors`**: Stores vendor profiles, tax IDs, and billing contacts.
-- **`purchase_orders`**: Stores PO numbers, issuing dates, total amounts, and open/closed statuses.
-- **`po_items`**: Line items linked to purchase orders with quantity and unit prices.
-- **`invoices`**: Intake invoice headers with matched PO references and OCR confidence scores.
-- **`invoice_items`**: Extracted invoice line items with JSONB bounding-box coordinate data (`{"x", "y", "w", "h"}`) and reconciliation statuses (`MATCHED`, `PRICE_MISMATCH`, `QTY_EXCEEDED`, `UNMATCHED_ITEM`).
+### Prerequisites
+- **Node.js** (v18+)
+- **PHP** (8.0+)
+- **Python** (3.9+)
 
----
+### Running Locally
 
-## ⚡ Quickstart & Local Setup
+1. **Start PHP API Server & Security Admin Portal**:
+   ```bash
+   php -S 127.0.0.1:8000 backend/server.php
+   ```
 
-### 1. Prerequisites
-- **Node.js**: v18+ and `npm`
-- **Python**: 3.11+
-- **PHP**: 8.2+ (with CLI enabled)
+2. **Start FastAPI OCR Microservice**:
+   ```bash
+   python -m uvicorn ocr_service.main:app --port 8001
+   ```
 
-### 2. Install Dependencies
+3. **Start React Vite Dev Server**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-**Python OCR Service**:
-```bash
-cd ocr_service
-pip install -r requirements.txt
-```
-
-**React Frontend**:
-```bash
-cd frontend
-npm install
-```
-
----
-
-### 3. Running Services Locally
-
-#### Step 1: Start the Python OCR Microservice (Port 8001)
-```bash
-python -m uvicorn ocr_service.main:app --port 8001
-```
-
-#### Step 2: Start the PHP Backend REST API (Port 8000)
-```bash
-php -S 127.0.0.1:8000 backend/server.php
-```
-
-#### Step 3: Start the React Frontend SPA (Port 5173)
-```bash
-cd frontend
-npm run dev
-```
-
-Open `http://localhost:5173/` in your browser to launch the FinancePulse Split-Screen Verification Workspace.
+4. **Access Applications**:
+   - **React SPA Workspace**: `http://localhost:5173/`
+   - **Backend Security Portal**: `http://127.0.0.1:8000/`
+   - **FastAPI OCR API Docs**: `http://127.0.0.1:8001/docs`
 
 ---
 
-## 🧪 Running Automated Tests
+## 🧪 Automated Unit Test Suite
 
-Run the standalone Reconciliation Engine test suite:
+Run the PHP CLI test suite to verify 2-Way, 3-Way GRN, Fraud Engine, Vendor Self-Learning Memory, Landed Costing, and Multi-Currency Forex algorithms:
+
 ```bash
 php backend/test_reconcile.php
 ```
 
-**Expected Output**:
-```text
-=== FinancePulse Reconciliation Engine Test Suite ===
+Output:
+```
+=== FinancePulse Reconciliation & Multi-Currency Forex Test Suite ===
 
-Test 1: Running 2-Way Match on Matched Invoice (INV-2026-001)...
-Status: MATCHED
-Discrepancies: 0
- - Item: 'High Performance Server Rack 42U' => Status: MATCHED
- - Item: 'Cat6A Shielded Ethernet Cable 100m' => Status: MATCHED
-
---------------------------------------------------
-
-Test 2: Running 2-Way Match on Discrepant Invoice (INV-2026-002)...
-Status: DISCREPANCY
-Discrepancies Found (2):
- [!] Item 'High Performance Server Rack 42U' price variance exceeds limit ($1650 vs $1500, 10% diff).
- [!] Item 'Cat6A Shielded Ethernet Cable 100m' exceeds PO quantity (15 vs 10).
- - Item: 'High Performance Server Rack 42U' => Status: PRICE_MISMATCH
- - Item: 'Cat6A Shielded Ethernet Cable 100m' => Status: QTY_EXCEEDED
+Test 1: Running 3-Way Match on EUR (€) Invoice converted to USD at 1.0850...
+Final Status: MATCHED
+Invoice Currency: EUR
+Exchange Rate: 1 EUR = 1.085 USD
+Billed Unit Price (EUR): €1382.49
+Converted USD Price: $1500 USD
+PO Target Unit Price: $1500 USD
+Item Status: MATCHED
 
 === Test Suite Complete ===
 ```
 
 ---
 
-## 📄 License & Credits
-
-Built for corporate accounts payable departments and financial intelligence operations.
+## 📄 License
+MIT License. Built for Enterprise Accounts Payable Intelligence.

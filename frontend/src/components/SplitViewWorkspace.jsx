@@ -20,7 +20,9 @@ import {
   Landmark,
   BrainCircuit,
   Truck,
-  Receipt
+  Receipt,
+  Globe,
+  Coins
 } from 'lucide-react';
 
 export default function SplitViewWorkspace({ 
@@ -42,6 +44,22 @@ export default function SplitViewWorkspace({
 
   const [freightAmount, setFreightAmount] = useState(150.00);
   const [taxAmount, setTaxAmount] = useState(240.00);
+
+  const [currency, setCurrency] = useState('USD');
+  const [exchangeRate, setExchangeRate] = useState(1.0000);
+
+  const FX_RATES = {
+    USD: 1.0000,
+    EUR: 1.0850,
+    GBP: 1.2720,
+    JPY: 0.0067,
+    CAD: 0.7420
+  };
+
+  const handleCurrencyChange = (newCurr) => {
+    setCurrency(newCurr);
+    setExchangeRate(FX_RATES[newCurr] || 1.0000);
+  };
 
   const currentPo = purchaseOrders.find(p => p.id === selectedPoId || p.po_number === selectedPoId) || purchaseOrders[0];
 
@@ -98,9 +116,9 @@ export default function SplitViewWorkspace({
 
   const handleReconcileClick = async () => {
     setIsReconciling(true);
-    await onRunReconcile(selectedPoId, matchMode, freightAmount, taxAmount);
+    await onRunReconcile(selectedPoId, matchMode, freightAmount, taxAmount, currency, exchangeRate);
     setIsReconciling(false);
-    showNotification(`${matchMode === '3way' ? '3-Way GRN' : '2-Way PO'} Reconciliation with Landed Cost Splitter complete!`);
+    showNotification(`${matchMode === '3way' ? '3-Way GRN' : '2-Way PO'} Reconciliation complete (${currency} converted @ ${exchangeRate})!`);
   };
 
   const handleErpSyncClick = async () => {
@@ -115,17 +133,19 @@ export default function SplitViewWorkspace({
   };
 
   const handleExportCsv = () => {
-    const headers = ["InvoiceNumber", "Vendor", "PO", "Description", "BilledQty", "POQty", "GRNQty", "BilledUnitPrice", "LandedUnitPrice", "TotalPrice", "Status", "FraudRiskScore"];
+    const headers = ["InvoiceNumber", "Vendor", "PO", "Currency", "ExchangeRate", "Description", "BilledQty", "POQty", "GRNQty", "BilledUnitPrice", "LandedUnitPriceUSD", "TotalPrice", "Status", "FraudRiskScore"];
     const rows = (invoiceData.items || []).map(it => [
       invoiceData.invoice_number,
       invoiceData.vendor_name,
       currentPo?.po_number,
+      currency,
+      exchangeRate,
       `"${it.description}"`,
       it.quantity,
       currentPo?.items[0]?.quantity || 0,
       it.grn_received_qty !== undefined ? it.grn_received_qty : (currentPo?.items[0]?.quantity || 0),
       it.unit_price,
-      it.landed_unit_cost || it.unit_price,
+      (it.landed_unit_cost || it.unit_price) * exchangeRate,
       it.total_price,
       it.reconciliation_status,
       `${fraudAssessment.fraud_risk_score}%`
@@ -149,8 +169,9 @@ export default function SplitViewWorkspace({
 
   const totalPoAmount = currentPo?.total_amount || 0;
   const invItemsTotal = (invoiceData.items || []).reduce((acc, it) => acc + (it.total_price || 0), 0);
-  const totalLandedExpense = invItemsTotal + freightAmount + taxAmount;
-  const netVariance = totalLandedExpense - totalPoAmount;
+  const totalLandedForeign = invItemsTotal + freightAmount + taxAmount;
+  const totalLandedUsd = totalLandedForeign * exchangeRate;
+  const netVariance = totalLandedUsd - totalPoAmount;
 
   return (
     <div className="flex flex-col gap-4">
@@ -233,32 +254,62 @@ export default function SplitViewWorkspace({
               </div>
             </div>
 
-            {/* Freight & Sales Tax Allocation Control Panel (Enhancement #5) */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold font-heading text-amber-300 flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-amber-400" />
-                  Line-Item Tax & Freight Allocation Splitter
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">Proportional Landed Costing</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-mono text-slate-400 mb-1 block">Lump-Sum Freight / Delivery ($)</label>
+            {/* Multi-Currency & Landed Freight Control Strip (Enhancements #5 & #6) */}
+            <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-slate-950/80 border border-slate-800 rounded-xl">
+              {/* Multi-Currency Forex Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5" />
+                    Invoice Currency (FX)
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Rate ($/unit)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={currency}
+                    onChange={(e) => handleCurrencyChange(e.target.value)}
+                    className="bg-slate-900 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (CA$)</option>
+                  </select>
                   <input
                     type="number"
-                    value={freightAmount}
-                    onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    step="0.0001"
+                    value={exchangeRate}
+                    onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 1.0)}
+                    className="w-24 bg-slate-900 border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-right"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] font-mono text-slate-400 mb-1 block">Sales Tax ($)</label>
+              </div>
+
+              {/* Landed Freight & Tax Splitter */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5" />
+                    Freight & Tax Fees
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Landed Allocation</span>
+                </div>
+                <div className="flex items-center gap-2">
                   <input
                     type="number"
+                    placeholder="Freight $"
+                    value={freightAmount}
+                    onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                    className="w-1/2 bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Tax $"
                     value={taxAmount}
                     onChange={(e) => setTaxAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    className="w-1/2 bg-slate-900 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -302,8 +353,16 @@ export default function SplitViewWorkspace({
             {/* Metrics Strip */}
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                <p className="text-[11px] text-slate-400 font-mono">Invoice Landed Total</p>
-                <p className="text-lg font-bold font-mono text-slate-100">${totalLandedExpense.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p className="text-[11px] text-slate-400 font-mono">Invoice Total ({currency})</p>
+                <p className="text-lg font-bold font-mono text-slate-100">
+                  {currency === 'EUR' ? '€' : (currency === 'GBP' ? '£' : '$')}
+                  {totalLandedForeign.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                </p>
+                {currency !== 'USD' && (
+                  <p className="text-[10px] text-emerald-400 font-mono mt-0.5">
+                    = ${totalLandedUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} USD
+                  </p>
+                )}
               </div>
 
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
@@ -316,7 +375,7 @@ export default function SplitViewWorkspace({
                   ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300' 
                   : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
               }`}>
-                <p className="text-[11px] opacity-80 font-mono">Net Variance</p>
+                <p className="text-[11px] opacity-80 font-mono">Net Variance (USD)</p>
                 <p className="text-lg font-bold font-mono">
                   {netVariance > 0 ? `+$${netVariance.toFixed(2)}` : `$${netVariance.toFixed(2)}`}
                 </p>
@@ -374,6 +433,8 @@ export default function SplitViewWorkspace({
             invoiceItems={invoiceData.items || []}
             poItems={currentPo?.items || []}
             matchMode={matchMode}
+            currency={currency}
+            exchangeRate={exchangeRate}
             onUpdateItem={handleUpdateLineItem}
             onLearnAlias={handleLearnAlias}
             activeHoverItem={activeHoverItem}

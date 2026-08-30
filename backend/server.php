@@ -11,9 +11,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/app/Services/ReconciliationEngine.php';
 require_once __DIR__ . '/app/Services/FraudEngine.php';
+require_once __DIR__ . '/app/Services/CurrencyConverter.php';
 
 use App\Services\ReconciliationEngine;
 use App\Services\FraudEngine;
+use App\Services\CurrencyConverter;
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
@@ -150,12 +152,25 @@ if ($uri === '/api/reconcile-3way' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $targetPoId = $input['po_id'] ?? null;
     $freightAmount = (float)($input['freight_amount'] ?? 0.0);
     $taxAmount = (float)($input['tax_amount'] ?? 0.0);
+    $currency = $input['currency'] ?? 'USD';
+    $exchangeRate = (float)($input['exchange_rate'] ?? 1.0000);
 
     $targetPo = $purchaseOrders[0];
     $targetGrn = $goodsReceivedNotes[0];
 
     $engine = new ReconciliationEngine();
-    $result = $engine->reconcile3Way($invoice, $targetPo, $targetGrn, [], $approvedBanks, $vendorAliases, $freightAmount, $taxAmount);
+    $result = $engine->reconcile3Way(
+        $invoice, 
+        $targetPo, 
+        $targetGrn, 
+        [], 
+        $approvedBanks, 
+        $vendorAliases, 
+        $freightAmount, 
+        $taxAmount,
+        $currency,
+        $exchangeRate
+    );
 
     echo json_encode([
         'status' => 'success',
@@ -171,7 +186,7 @@ header("Content-Type: text/html; charset=utf-8");
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <title>FinancePulse | Landed Cost & Fraud Security Portal</title>
+    <title>FinancePulse | Multi-Currency & Security Backend Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -182,13 +197,13 @@ header("Content-Type: text/html; charset=utf-8");
         <div class="flex justify-between items-center border-b border-slate-800 pb-6">
             <div>
                 <div class="flex items-center gap-3">
-                    <span class="px-3 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-mono font-bold">
-                        Line-Item Tax & Freight Allocation Splitter Active
+                    <span class="px-3 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-mono font-bold">
+                        Multi-Currency Forex Conversion Engine Active
                     </span>
                     <span class="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 </div>
                 <h1 class="text-3xl font-extrabold font-heading text-slate-100 mt-2">FinancePulse Backend Security Portal</h1>
-                <p class="text-sm text-slate-400 font-mono mt-1">Landed Inventory Costing • Vendor Memory • SHA-256 Hashing</p>
+                <p class="text-sm text-slate-400 font-mono mt-1">Multi-Currency (EUR, GBP, JPY, USD) • Landed Inventory Costing • Vendor Memory</p>
             </div>
             <a href="http://localhost:5173" target="_blank" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
                 Open React SPA Workspace ↗

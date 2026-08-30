@@ -171,7 +171,7 @@ export default function App() {
     }
   };
 
-  const runReconciliationService = async (poId, mode = '3way', freightAmount = 150.0, taxAmount = 240.0) => {
+  const runReconciliationService = async (poId, mode = '3way', freightAmount = 150.0, taxAmount = 240.0, currency = 'USD', exchangeRate = 1.0000) => {
     const targetPo = MOCK_POS.find(p => p.id === poId || p.po_number === poId) || MOCK_POS[0];
     
     try {
@@ -183,7 +183,9 @@ export default function App() {
           po_id: targetPo.id,
           grn_id: `grn-${targetPo.po_number.replace('PO-', '')}-uuid`,
           freight_amount: freightAmount,
-          tax_amount: taxAmount
+          tax_amount: taxAmount,
+          currency: currency,
+          exchange_rate: exchangeRate
         })
       });
 
@@ -203,7 +205,7 @@ export default function App() {
       // Fallback local calculations
     }
 
-    // Local fallback calculation
+    // Local fallback calculation with Forex
     const updatedItems = (invoiceData.items || []).map(it => {
       const lineTotal = it.total_price || 0;
       const subtotal = invoiceData.total_amount || 4250.00;
@@ -229,7 +231,6 @@ export default function App() {
   };
 
   const handleSyncErp = async (inv) => {
-    // API POST mock to QuickBooks/Xero
     return new Promise(resolve => setTimeout(resolve, 800));
   };
 
@@ -284,10 +285,10 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className="font-heading text-lg font-bold tracking-tight text-white">FinancePulse</h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-                  v2.5 Enterprise
+                  v2.6 Multi-Currency
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">Automated 3-Way Reconciliation • Landed Costing & Fraud Prevention</p>
+              <p className="text-[11px] text-slate-400">Automated 3-Way Reconciliation • Landed Costing, Forex & Fraud Protection</p>
             </div>
           </div>
 
@@ -408,7 +409,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-800 bg-slate-950 py-4 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex justify-between items-center font-mono">
-          <div>FinancePulse AP Intelligence Engine • 3-Way Match & Landed Costing</div>
+          <div>FinancePulse AP Intelligence Engine • 3-Way Match, Forex & Landed Costing</div>
           <div className="flex gap-4 text-[11px]">
             <a href="http://127.0.0.1:8000/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">
               Backend Admin Portal ↗
