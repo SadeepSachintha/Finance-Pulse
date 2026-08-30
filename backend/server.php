@@ -186,7 +186,7 @@ header("Content-Type: text/html; charset=utf-8");
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <title>FinancePulse | Multi-Currency & Security Backend Portal</title>
+    <title>FinancePulse by SS Labz | Security & Multi-Currency Admin Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -197,13 +197,13 @@ header("Content-Type: text/html; charset=utf-8");
         <div class="flex justify-between items-center border-b border-slate-800 pb-6">
             <div>
                 <div class="flex items-center gap-3">
-                    <span class="px-3 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-mono font-bold">
-                        Multi-Currency Forex Conversion Engine Active
+                    <span class="px-3 py-1 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-mono font-bold">
+                        A Product of SS Labz
                     </span>
                     <span class="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 </div>
-                <h1 class="text-3xl font-extrabold font-heading text-slate-100 mt-2">FinancePulse Backend Security Portal</h1>
-                <p class="text-sm text-slate-400 font-mono mt-1">Multi-Currency (EUR, GBP, JPY, USD) • Landed Inventory Costing • Vendor Memory</p>
+                <h1 class="text-3xl font-extrabold font-heading text-slate-100 mt-2">FinancePulse Security Portal</h1>
+                <p class="text-sm text-slate-400 font-mono mt-1">FinancePulse by SS Labz • Multi-Currency, Vendor Memory & Fraud Shield</p>
             </div>
             <a href="http://localhost:5173" target="_blank" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
                 Open React SPA Workspace ↗

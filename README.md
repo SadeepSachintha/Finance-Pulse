@@ -1,6 +1,6 @@
-# FinancePulse | Automated Financial Intelligence & Multi-Currency 3-Way Reconciliation Platform
+# FinancePulse by SS Labz | Automated Financial Intelligence Platform
 
-FinancePulse is an enterprise-grade financial intelligence platform that automates Accounts Payable (AP) invoice processing, OCR document extraction, 3-way matching (Invoice + Purchase Order + Goods Received Note), fraud risk assessment, vendor self-learning memory, landed inventory costing, multi-currency Forex conversions, and ERP synchronization (QuickBooks & Xero).
+**FinancePulse** is an enterprise-grade financial intelligence product by **SS Labz** that automates Accounts Payable (AP) invoice processing, OCR document extraction, 3-way matching (Invoice + Purchase Order + Goods Received Note), fraud risk assessment, vendor self-learning memory, landed inventory costing, multi-currency Forex conversions, and ERP synchronization (QuickBooks & Xero).
 
 ![FinancePulse Platform Overview](file:///C:/Users/Sadeep/.gemini/antigravity-ide/brain/7f38397b-5029-494c-b9f5-4128384bbe00/reconciliation_results_eur_1788067042630.png)
 
@@ -84,5 +84,5 @@ Item Status: MATCHED
 
 ---
 
-## 📄 License
-MIT License. Built for Enterprise Accounts Payable Intelligence.
+## 🏢 About SS Labz
+**FinancePulse** is engineered & maintained by **SS Labz** — building modern AI-driven financial software and enterprise automation products.

@@ -115,7 +115,7 @@ const SAMPLE_INVOICES = {
     invoice_number: 'INV-2026-999',
     vendor_name: 'Acme Industrial Supplies',
     vendor_tax_id: 'US-99882211',
-    vendor_bank_account: 'SUSPICIOUS-FRAUD-BANK-99999', // Altered bank!
+    vendor_bank_account: 'SUSPICIOUS-FRAUD-BANK-99999',
     invoice_date: '2026-08-25',
     matched_po_id: 'po-99201-uuid',
     status: 'DISCREPANCY',
@@ -205,7 +205,6 @@ export default function App() {
       // Fallback local calculations
     }
 
-    // Local fallback calculation with Forex
     const updatedItems = (invoiceData.items || []).map(it => {
       const lineTotal = it.total_price || 0;
       const subtotal = invoiceData.total_amount || 4250.00;
@@ -285,10 +284,10 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className="font-heading text-lg font-bold tracking-tight text-white">FinancePulse</h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-                  v2.6 Multi-Currency
+                  by SS Labz
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">Automated 3-Way Reconciliation • Landed Costing, Forex & Fraud Protection</p>
+              <p className="text-[11px] text-slate-400">Automated 3-Way Reconciliation • A Product of SS Labz</p>
             </div>
           </div>
 
@@ -315,7 +314,7 @@ export default function App() {
                 }`}
               >
                 <ShieldAlert className="w-3 h-3 text-rose-300 animate-pulse" />
-                INV-999 (Fraud Security Alert)
+                INV-999 (Fraud Alert)
               </button>
             </div>
 
@@ -409,7 +408,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-800 bg-slate-950 py-4 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex justify-between items-center font-mono">
-          <div>FinancePulse AP Intelligence Engine • 3-Way Match, Forex & Landed Costing</div>
+          <div>FinancePulse by SS Labz • AP Intelligence Engine</div>
           <div className="flex gap-4 text-[11px]">
             <a href="http://127.0.0.1:8000/" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">
               Backend Admin Portal ↗
